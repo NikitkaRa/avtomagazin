@@ -1,0 +1,133 @@
+@page "/fleet"
+@rendermode InteractiveServer
+@inject AvtomagazinClient Api
+@inject StaffSession Session
+@inject NavigationManager Nav
+
+<PageTitle>Автопарк</PageTitle>
+
+<h1>Автопарк</h1>
+
+@if (!string.IsNullOrEmpty(_error))
+{
+    <div class="alert">@_error</div>
+}
+
+<section class="panel">
+    <h2>Добавить автолавку</h2>
+    <div class="form-grid">
+        <input @bind="_plate" placeholder="Госномер" />
+        <input @bind="_operator" placeholder="Оператор (райпо)" />
+        <button type="button" class="btn" @onclick="CreateAsync">Создать</button>
+    </div>
+</section>
+
+@if (_loading)
+{
+    <p>Загрузка…</p>
+}
+else
+{
+    <table class="table">
+        <thead>
+        <tr>
+            <th>Номер</th>
+            <th>Оператор</th>
+            <th>Статус</th>
+            <th>Последняя точка</th>
+            <th></th>
+        </tr>
+        </thead>
+        <tbody>
+        @foreach (var v in _vehicles)
+        {
+            <tr>
+                <td>@v.PlateNumber</td>
+                <td>@v.OperatorName</td>
+                <td>@(v.IsActive ? "активна" : "выкл")</td>
+                <td>
+                    @if (v.LastLatitude is not null)
+                    {
+                        <span>@v.LastLatitude?.ToString("F4"), @v.LastLongitude?.ToString("F4")</span>
+                        <span class="muted"> @v.LastSeenAtUtc?.ToLocalTime().ToString("HH:mm")</span>
+                    }
+                    else
+                    {
+                        <span class="muted">—</span>
+                    }
+                </td>
+                <td>
+                    <button class="btn btn-ghost" @onclick="() => ToggleAsync(v)">
+                        @(v.IsActive ? "Выключить" : "Включить")
+                    </button>
+                </td>
+            </tr>
+        }
+        </tbody>
+    </table>
+}
+
+@code {
+    private bool _loading = true;
+    private string? _error;
+    private List<VehicleDto> _vehicles = [];
+    private string _plate = "";
+    private string _operator = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!Session.IsAuthenticated)
+        {
+            Nav.NavigateTo("/");
+            return;
+        }
+
+        await ReloadAsync();
+    }
+
+    private async Task ReloadAsync()
+    {
+        _loading = true;
+        _error = null;
+        try
+        {
+            _vehicles = await Api.GetVehiclesAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task CreateAsync()
+    {
+        try
+        {
+            await Api.CreateVehicleAsync(new CreateVehicleRequest(_plate, _operator));
+            _plate = "";
+            _operator = "";
+            await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    private async Task ToggleAsync(VehicleDto v)
+    {
+        try
+        {
+            await Api.SetVehicleActiveAsync(v.Id, !v.IsActive);
+            await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+    }
+}

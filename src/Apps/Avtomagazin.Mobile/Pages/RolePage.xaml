@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="Avtomagazin.Mobile.RolePage"
+             Title="Автомагазин"
+             BackgroundColor="#12241C">
+    <ScrollView>
+        <VerticalStackLayout Padding="20,28" Spacing="12">
+            <Label Text="ДЕМО ДЛЯ РАЙПО / МИНСВЯЗИ" TextColor="#A7B8AD" FontSize="12" />
+            <Label Text="Нативное приложение" FontSize="28" FontAttributes="Bold" TextColor="#F3F7F3" />
+            <Label Text="Житель, водитель и оператор — один бинарник. Android и iOS." TextColor="#A7B8AD" />
+
+            <Label Text="Адрес API" TextColor="#A7B8AD" Margin="0,12,0,0" />
+            <Entry x:Name="GatewayEntry" TextColor="#F3F7F3" BackgroundColor="#1B3328" />
+
+            <Button Text="Житель — когда приедет автолавка" Clicked="OnResident" BackgroundColor="#3DBA7A" TextColor="#082014" />
+            <Button Text="Водитель Озеричино" Clicked="OnOzerichino" BackgroundColor="#1B3328" TextColor="#F3F7F3" />
+            <Button Text="Водитель Гродно" Clicked="OnGrodno" BackgroundColor="#1B3328" TextColor="#F3F7F3" />
+            <Button Text="Оператор райпо" Clicked="OnOperator" BackgroundColor="#1B3328" TextColor="#F3F7F3" />
+
+            <Label x:Name="ErrorLabel" TextColor="#F0C7B0" />
+            <Label Text="Пароль демо-аккаунтов: demo. На эмуляторе API — 10.0.2.2:5100." TextColor="#A7B8AD" FontSize="12" />
+        </VerticalStackLayout>
+    </ScrollView>
+</ContentPage>

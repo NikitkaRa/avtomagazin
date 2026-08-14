@@ -1,0 +1,74 @@
+@page "/driver"
+@rendermode InteractiveServer
+@inject AvtomagazinClient Api
+
+<PageTitle>Водитель</PageTitle>
+
+<h1>Кабинет водителя</h1>
+<p class="lead">Ручная отправка GPS-точки (для демо без телематики).</p>
+
+@if (!string.IsNullOrEmpty(_error))
+{
+    <div class="alert">@_error</div>
+}
+@if (!string.IsNullOrEmpty(_ok))
+{
+    <div class="panel">@_ok</div>
+}
+
+<div class="form-grid">
+    <select @bind="_vehicleId">
+        <option value="@Guid.Empty">— автолавка —</option>
+        @foreach (var v in _vehicles)
+        {
+            <option value="@v.Id">@v.PlateNumber</option>
+        }
+    </select>
+    <input type="number" step="0.0001" @bind="_lat" />
+    <input type="number" step="0.0001" @bind="_lon" />
+    <input type="number" step="0.1" @bind="_speed" />
+    <button class="btn" @onclick="SendAsync">Отправить позицию</button>
+</div>
+
+@code {
+    private List<VehicleDto> _vehicles = [];
+    private Guid _vehicleId;
+    private double _lat = 53.65;
+    private double _lon = 23.85;
+    private double _speed = 35;
+    private string? _error;
+    private string? _ok;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _vehicles = await Api.GetVehiclesAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    private async Task SendAsync()
+    {
+        if (_vehicleId == Guid.Empty)
+        {
+            _error = "Выбери автолавку";
+            return;
+        }
+
+        try
+        {
+            await Api.IngestPositionAsync(_vehicleId, _lat, _lon, _speed);
+            _ok = "Позиция отправлена";
+            _error = null;
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+            _ok = null;
+        }
+    }
+}

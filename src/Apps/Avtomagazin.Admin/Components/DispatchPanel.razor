@@ -1,0 +1,201 @@
+@inject AvtomagazinClient Api
+@inject IJSRuntime Js
+@implements IAsyncDisposable
+
+<section class="sheet">
+    <h2>Все автолавки</h2>
+    <p class="muted">Живая карта. Зелёная точка — трансляция с телефона водителя.</p>
+    <div class="map map-tall" id="staff-dispatch-map"></div>
+</section>
+
+<section class="sheet">
+    <h3>Отметки жителей</h3>
+    @if (_reports.Count == 0)
+    {
+        <p class="muted">Пока нет. Житель на карточке остановки жмёт «На месте» / «Не приехала».</p>
+    }
+    @foreach (var report in _reports.Take(8))
+    {
+        <div class="list-row">
+            <div>
+                <strong>@report.SettlementName</strong>
+                <div class="muted">@(report.Kind == "on-site" ? "на месте" : "не приехала")</div>
+            </div>
+            <div class="right">@report.ReportedAtUtc.ToLocalTime().ToString("HH:mm")</div>
+        </div>
+    }
+</section>
+
+<section class="sheet">
+    <h3>Пуши</h3>
+    @if (_pushes.Count == 0)
+    {
+        <p class="muted">Лог пустой. Появится, когда водитель нажмёт «На месте».</p>
+    }
+    @foreach (var push in _pushes.Take(6))
+    {
+        <div class="list-row">
+            <div>
+                <strong>@push.Title</strong>
+                <div class="muted">@push.Body · @push.RecipientCount получателей</div>
+            </div>
+            <div class="right">@push.SentAtUtc.ToLocalTime().ToString("HH:mm")</div>
+        </div>
+    }
+</section>
+
+<section class="sheet">
+    <h3>Покрытие</h3>
+    @if (_coverage.Count == 0)
+    {
+        <p class="muted">Визитов ещё нет — их пишет кнопка водителя «На месте».</p>
+    }
+    @foreach (var visit in _coverage.Take(6))
+    {
+        <div class="list-row">
+            <div>
+                <strong>@visit.SettlementName</strong>
+                <div class="muted">@(visit.WithinScheduledWindow ? "в окне" : "вне окна") · @visit.RegionCode</div>
+            </div>
+            <div class="right">@visit.ArrivedAtUtc.ToLocalTime().ToString("HH:mm")</div>
+        </div>
+    }
+</section>
+
+<section class="sheet">
+    <h3>Сейчас в рейсе</h3>
+    @foreach (var van in _vans)
+    {
+        var live = string.Equals(van.LastSource, "driver-app", StringComparison.OrdinalIgnoreCase);
+        <div class="list-row">
+            <div>
+                <strong>@van.PlateNumber</strong>
+                <div class="muted">@van.OperatorName · @(live ? "live" : van.LastSource ?? "нет сигнала")</div>
+            </div>
+            <div class="right">
+                @if (van.LastSeenAtUtc is DateTimeOffset seen)
+                {
+                    <span>@seen.ToLocalTime().ToString("HH:mm:ss")</span>
+                }
+            </div>
+        </div>
+    }
+</section>
+
+@code {
+    private List<VehicleDto> _vans = [];
+    private List<PresenceReportDto> _reports = [];
+    private List<NotificationDto> _pushes = [];
+    private List<CoverageDto> _coverage = [];
+    private IJSObjectReference? _map;
+    private CancellationTokenSource? _poll;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await ReloadAsync();
+        _poll = new CancellationTokenSource();
+        _ = LoopAsync(_poll.Token);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        try
+        {
+            _map = await Js.InvokeAsync<IJSObjectReference>("import", "./js/map.js");
+            await _map.InvokeAsync<bool>("init", "staff-dispatch-map", 53.55, 26.4, 7);
+            await DrawAsync();
+        }
+        catch
+        {
+            // OSM tiles need network
+        }
+    }
+
+    private async Task LoopAsync(CancellationToken ct)
+    {
+        while (!ct.IsCancellationRequested)
+        {
+            try
+            {
+                await ReloadAsync();
+                await InvokeAsync(async () =>
+                {
+                    await DrawAsync();
+                    StateHasChanged();
+                });
+            }
+            catch
+            {
+            }
+
+            await Task.Delay(6000, ct);
+        }
+    }
+
+    private async Task ReloadAsync()
+    {
+        _vans = await Api.GetVehiclesAsync();
+        try
+        {
+            _reports = await Api.GetPresenceReportsAsync();
+            _pushes = await Api.GetNotificationsAsync();
+            _coverage = await Api.GetCoverageAsync();
+        }
+        catch
+        {
+            // older API without reports — map still works
+        }
+    }
+
+    private async Task DrawAsync()
+    {
+        if (_map is null)
+        {
+            return;
+        }
+
+        var routes = await Api.GetRoutesAsync();
+        var markers = new List<object>();
+        foreach (var stop in routes.SelectMany(r => r.Stops))
+        {
+            markers.Add(new
+            {
+                lat = stop.Latitude,
+                lng = stop.Longitude,
+                kind = "stop",
+                emoji = "•",
+                popup = $"<b>{stop.SettlementName}</b><br/>{stop.PlannedArrivalUtc.ToLocalTime():dd.MM HH:mm}"
+            });
+        }
+
+        foreach (var van in _vans.Where(v => v.LastLatitude is not null))
+        {
+            var live = string.Equals(van.LastSource, "driver-app", StringComparison.OrdinalIgnoreCase);
+            markers.Add(new
+            {
+                lat = van.LastLatitude,
+                lng = van.LastLongitude,
+                kind = "van",
+                emoji = "🚐",
+                popup = $"<b>{van.PlateNumber}</b><br/>{van.OperatorName}<br/>{(live ? "трансляция с приложения" : "адаптер / демо")}"
+            });
+        }
+
+        await _map.InvokeVoidAsync("setMarkers", "staff-dispatch-map", markers);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _poll?.Cancel();
+        _poll?.Dispose();
+        if (_map is not null)
+        {
+            await _map.DisposeAsync();
+        }
+    }
+}

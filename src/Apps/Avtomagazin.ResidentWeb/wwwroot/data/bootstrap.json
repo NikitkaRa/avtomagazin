@@ -1,0 +1,102 @@
+{
+  "syncedAtUtc": null,
+  "vehicles": [
+    {
+      "id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+      "plateNumber": "1234 AB-7",
+      "operatorName": "Гродненское райпо",
+      "isActive": true,
+      "lastLatitude": 53.6694,
+      "lastLongitude": 23.8131,
+      "lastSeenAtUtc": null,
+      "lastSource": null
+    },
+    {
+      "id": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+      "plateNumber": "5678 CD-4",
+      "operatorName": "Пуховичское райпо",
+      "isActive": true,
+      "lastLatitude": 53.5774,
+      "lastLongitude": 27.7472,
+      "lastSeenAtUtc": null,
+      "lastSource": null
+    }
+  ],
+  "routes": [
+    {
+      "id": "cccccccc-cccc-cccc-cccc-cccccccccccc",
+      "name": "Гродно — окраинные деревни",
+      "vehicleId": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+      "stops": [
+        {
+          "id": "dddddddd-dddd-dddd-dddd-ddddddddddd1",
+          "routeId": "cccccccc-cccc-cccc-cccc-cccccccccccc",
+          "sequence": 1,
+          "settlementName": "Индура",
+          "regionCode": "BY-HR",
+          "latitude": 53.46,
+          "longitude": 23.95,
+          "plannedArrivalUtc": "1970-01-01T09:00:00Z"
+        },
+        {
+          "id": "dddddddd-dddd-dddd-dddd-ddddddddddd2",
+          "routeId": "cccccccc-cccc-cccc-cccc-cccccccccccc",
+          "sequence": 2,
+          "settlementName": "Озёры",
+          "regionCode": "BY-HR",
+          "latitude": 53.72,
+          "longitude": 24.18,
+          "plannedArrivalUtc": "1970-01-01T10:00:00Z"
+        },
+        {
+          "id": "dddddddd-dddd-dddd-dddd-ddddddddddd3",
+          "routeId": "cccccccc-cccc-cccc-cccc-cccccccccccc",
+          "sequence": 3,
+          "settlementName": "Скидель",
+          "regionCode": "BY-HR",
+          "latitude": 53.59,
+          "longitude": 24.25,
+          "plannedArrivalUtc": "1970-01-01T11:00:00Z"
+        }
+      ]
+    },
+    {
+      "id": "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee",
+      "name": "Пуховичи — Озеричино",
+      "vehicleId": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+      "stops": [
+        {
+          "id": "dddddddd-dddd-dddd-dddd-ddddddddddd5",
+          "routeId": "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee",
+          "sequence": 1,
+          "settlementName": "Правдинский",
+          "regionCode": "BY-MI",
+          "latitude": 53.5085,
+          "longitude": 27.8372,
+          "plannedArrivalUtc": "1970-01-01T08:30:00Z"
+        },
+        {
+          "id": "dddddddd-dddd-dddd-dddd-ddddddddddd4",
+          "routeId": "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee",
+          "sequence": 2,
+          "settlementName": "Озеричино",
+          "regionCode": "BY-MI",
+          "latitude": 53.5774,
+          "longitude": 27.7472,
+          "plannedArrivalUtc": "1970-01-01T09:00:00Z"
+        },
+        {
+          "id": "dddddddd-dddd-dddd-dddd-ddddddddddd6",
+          "routeId": "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee",
+          "sequence": 3,
+          "settlementName": "Дукора",
+          "regionCode": "BY-MI",
+          "latitude": 53.6786,
+          "longitude": 27.9525,
+          "plannedArrivalUtc": "1970-01-01T10:00:00Z"
+        }
+      ]
+    }
+  ],
+  "eta": []
+}

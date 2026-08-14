@@ -1,0 +1,23 @@
+﻿@page "/"
+@rendermode InteractiveServer
+@inject StaffSession Session
+@implements IDisposable
+
+@if (!Session.IsAuthenticated)
+{
+    <LoginPanel />
+}
+else if (Session.IsDriver)
+{
+    <DrivePanel />
+}
+else
+{
+    <DispatchPanel />
+}
+
+@code {
+    protected override void OnInitialized() => Session.Changed += OnChanged;
+    private void OnChanged() => InvokeAsync(StateHasChanged);
+    public void Dispose() => Session.Changed -= OnChanged;
+}

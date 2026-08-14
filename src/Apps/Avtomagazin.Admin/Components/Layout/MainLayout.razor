@@ -1,0 +1,42 @@
+﻿@inherits LayoutComponentBase
+@inject StaffSession Session
+@implements IDisposable
+
+<div class="app @(Session.IsAuthenticated ? "app-in" : "app-out")">
+    @if (Session.IsAuthenticated)
+    {
+        <header class="topbar">
+            <div>
+                <div class="brand">Автомагазин</div>
+                <div class="who">@Session.Name · @(Session.IsDriver ? "рейс" : "диспетчер")</div>
+            </div>
+            <button class="link" @onclick="Session.SignOut">Выйти</button>
+        </header>
+    }
+    <main class="main">
+        @Body
+    </main>
+    @if (Session.IsAuthenticated)
+    {
+        <nav class="tabbar">
+            @if (Session.IsDriver)
+            {
+                <NavLink href="/" Match="NavLinkMatch.All">Рейс</NavLink>
+            }
+            else
+            {
+                <NavLink href="/" Match="NavLinkMatch.All">Карта</NavLink>
+                <NavLink href="routes">Маршруты</NavLink>
+                <NavLink href="fleet">Парк</NavLink>
+                <NavLink href="coverage">Визиты</NavLink>
+                <NavLink href="notifications">Пуши</NavLink>
+            }
+        </nav>
+    }
+</div>
+
+@code {
+    protected override void OnInitialized() => Session.Changed += OnChanged;
+    private void OnChanged() => InvokeAsync(StateHasChanged);
+    public void Dispose() => Session.Changed -= OnChanged;
+}

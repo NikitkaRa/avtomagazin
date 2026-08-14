@@ -1,0 +1,52 @@
+@inject AvtomagazinClient Api
+@inject StaffSession Session
+
+<section class="hero-login">
+    <p class="eyebrow">Демо для райпо / Минсвязи</p>
+    <h1>Приложение персонала</h1>
+    <p class="sub">Один вход. Водитель транслирует точку, оператор видит весь парк.</p>
+</section>
+
+<div class="stack">
+    <button class="role-card" @onclick='() => EnterAsync("seller@demo.by")'>
+        <strong>Водитель Озеричино</strong>
+        <span>Рейс Пуховичского райпо. Гео у деревни, кнопка «На месте».</span>
+    </button>
+    <button class="role-card" @onclick='() => EnterAsync("driver@demo.by")'>
+        <strong>Водитель Гродно</strong>
+        <span>Рейс Гродненского райпо. Индура, Озёры, Скидель.</span>
+    </button>
+    <button class="role-card" @onclick='() => EnterAsync("operator@demo.by")'>
+        <strong>Оператор райпо</strong>
+        <span>Карта автолавок, задержки, покрытие деревень.</span>
+    </button>
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <div class="alert">@_error</div>
+    }
+    <p class="muted tiny">Пароль у всех демо-аккаунтов: demo. Без Tailscale и без серверов — только этот компьютер.</p>
+</div>
+
+@code {
+    private string? _error;
+
+    private async Task EnterAsync(string email)
+    {
+        _error = null;
+        try
+        {
+            var login = await Api.LoginAsync(email, "demo");
+            if (login is null)
+            {
+                _error = "Не удалось войти. Поднимите API (порт 5100).";
+                return;
+            }
+
+            Session.SignIn(login.Role, login.Email, login.Name, login.VehicleId, login.AccessToken);
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+    }
+}

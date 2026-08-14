@@ -1,0 +1,6 @@
+@Avtomagazin.Gateway_HostAddress = http://localhost:5124
+
+GET {{Avtomagazin.Gateway_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

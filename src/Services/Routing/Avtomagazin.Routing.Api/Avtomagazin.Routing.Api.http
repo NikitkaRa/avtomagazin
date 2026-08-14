@@ -1,0 +1,6 @@
+@Avtomagazin.Routing.Api_HostAddress = http://localhost:5189
+
+GET {{Avtomagazin.Routing.Api_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

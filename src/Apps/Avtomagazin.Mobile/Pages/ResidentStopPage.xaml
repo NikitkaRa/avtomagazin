@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="Avtomagazin.Mobile.ResidentStopPage"
+             Title="Остановка"
+             BackgroundColor="#12241C">
+    <VerticalStackLayout Padding="16" Spacing="12">
+        <Label x:Name="TitleLabel" FontSize="26" FontAttributes="Bold" TextColor="#F3F7F3" />
+        <Label x:Name="PlanLabel" TextColor="#A7B8AD" />
+        <Label x:Name="WindowLabel" TextColor="#A7B8AD" />
+        <Button x:Name="FavoriteButton" Clicked="OnFavorite" BackgroundColor="#3DBA7A" TextColor="#082014" />
+        <Button Text="На месте" Clicked="OnSite" BackgroundColor="#1B3328" TextColor="#F3F7F3" />
+        <Button Text="Не приехала" Clicked="OnNoShow" BackgroundColor="#1B3328" TextColor="#F3F7F3" />
+        <Label x:Name="Message" TextColor="#F0C7B0" />
+    </VerticalStackLayout>
+</ContentPage>

@@ -1,0 +1,112 @@
+@page "/coverage"
+@rendermode InteractiveServer
+@inject AvtomagazinClient Api
+@inject StaffSession Session
+@inject NavigationManager Nav
+
+<PageTitle>Покрытие</PageTitle>
+
+<h1>Социальные стандарты / coverage</h1>
+<p class="lead">Визиты автолавок в населённые пункты (позже уйдёт в «Умный город»).</p>
+
+<section class="panel">
+    <h2>Зафиксировать визит</h2>
+    <div class="form-grid">
+        <select @bind="_vehicleId">
+            <option value="@Guid.Empty">— автолавка —</option>
+            @foreach (var v in _vehicles)
+            {
+                <option value="@v.Id">@v.PlateNumber</option>
+            }
+        </select>
+        <select @bind="_stopId">
+            <option value="@Guid.Empty">— остановка —</option>
+            @foreach (var s in _stops)
+            {
+                <option value="@s.Id">@s.SettlementName (@s.Sequence)</option>
+            }
+        </select>
+        <label class="check">
+            <input type="checkbox" @bind="_onTime" /> вовремя
+        </label>
+        <button class="btn" @onclick="RecordAsync">Записать</button>
+    </div>
+</section>
+
+@if (!string.IsNullOrEmpty(_error))
+{
+    <div class="alert">@_error</div>
+}
+
+<table class="table">
+    <thead>
+    <tr>
+        <th>Пункт</th>
+        <th>Регион</th>
+        <th>Когда</th>
+        <th>Вовремя</th>
+    </tr>
+    </thead>
+    <tbody>
+    @foreach (var c in _coverage)
+    {
+        <tr>
+            <td>@c.SettlementName</td>
+            <td>@c.RegionCode</td>
+            <td>@c.ArrivedAtUtc.ToLocalTime().ToString("dd.MM HH:mm")</td>
+            <td>@(c.WithinScheduledWindow ? "да" : "нет")</td>
+        </tr>
+    }
+    </tbody>
+</table>
+
+@code {
+    private string? _error;
+    private List<CoverageDto> _coverage = [];
+    private List<VehicleDto> _vehicles = [];
+    private List<RouteStopDto> _stops = [];
+    private Guid _vehicleId;
+    private Guid _stopId;
+    private bool _onTime = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!Session.IsAuthenticated)
+        {
+            Nav.NavigateTo("/");
+            return;
+        }
+
+        try
+        {
+            _vehicles = await Api.GetVehiclesAsync();
+            var routes = await Api.GetRoutesAsync();
+            _stops = routes.SelectMany(r => r.Stops).ToList();
+            _coverage = await Api.GetCoverageAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    private async Task RecordAsync()
+    {
+        if (_vehicleId == Guid.Empty || _stopId == Guid.Empty)
+        {
+            _error = "Выбери автолавку и остановку";
+            return;
+        }
+
+        try
+        {
+            await Api.RecordCoverageAsync(new CoverageVisitRequest(_vehicleId, _stopId, null, _onTime));
+            _coverage = await Api.GetCoverageAsync();
+            _error = null;
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+    }
+}

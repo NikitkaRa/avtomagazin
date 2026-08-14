@@ -1,0 +1,274 @@
+@inject AvtomagazinClient Api
+@inject StaffSession Session
+@inject IJSRuntime Js
+@implements IAsyncDisposable
+
+<section class="sheet">
+    <h2>Рейс сегодня</h2>
+    <p class="muted">@(_vehicle?.PlateNumber ?? "…") · @(_vehicle?.OperatorName)</p>
+
+    @if (_next is not null)
+    {
+        <div class="eta-card">
+            <div class="eta-kicker">Следующая остановка</div>
+            <div class="eta-title">@_next.SettlementName</div>
+            <div>через ~@_next.MinutesUntilArrival мин</div>
+        </div>
+    }
+
+    @if (_stops.Count > 0)
+    {
+        <div class="stack" style="margin: 0.75rem 0;">
+            @foreach (var stop in _stops)
+            {
+                <div class="list-row">
+                    <div>
+                        <strong>@stop.SettlementName</strong>
+                        <div class="muted">план @stop.PlannedArrivalUtc.ToLocalTime().ToString("HH:mm")</div>
+                    </div>
+                    <button class="btn" disabled="@_arriving" @onclick="() => ArriveAsync(stop)">На месте</button>
+                </div>
+            }
+        </div>
+    }
+
+    <div class="map" id="staff-drive-map"></div>
+
+    @if (!string.IsNullOrEmpty(_status))
+    {
+        <p class="@(_live ? "ok" : "alert")">@_status</p>
+    }
+
+    <div class="row">
+        <button class="btn" disabled="@_live" @onclick="StartLiveAsync">Транслировать GPS</button>
+        <button class="btn btn-ghost" disabled="@_live" @onclick="StartDemoAsync">Демо-маршрут</button>
+        <button class="btn btn-ghost" disabled="@(!_live)" @onclick="StopAsync">Стоп</button>
+    </div>
+    <p class="tiny muted">GPS с телефона по HTTP часто блокируется. Для показа комиссии нажмите «Демо-маршрут». «На месте» шлёт пуш тем, кто добавил остановку в избранное — автоматически с GPS пуш не уходит.</p>
+</section>
+
+@code {
+    private VehicleDto? _vehicle;
+    private EtaDto? _next;
+    private List<RouteStopDto> _stops = [];
+    private string? _status;
+    private bool _live;
+    private bool _arriving;
+    private int _watchId;
+    private IJSObjectReference? _map;
+    private IJSObjectReference? _geo;
+    private DotNetObjectReference<DrivePanel>? _self;
+    private CancellationTokenSource? _poll;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await ReloadAsync();
+        _poll = new CancellationTokenSource();
+        _ = LoopAsync(_poll.Token);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        _self = DotNetObjectReference.Create(this);
+        try
+        {
+            _map = await Js.InvokeAsync<IJSObjectReference>("import", "./js/map.js");
+            _geo = await Js.InvokeAsync<IJSObjectReference>("import", "./js/geo.js");
+            var startLat = _vehicle?.LastLatitude ?? 53.5774;
+            var startLng = _vehicle?.LastLongitude ?? 27.7472;
+            await _map.InvokeAsync<bool>("init", "staff-drive-map", startLat, startLng, 11);
+            await DrawAsync();
+        }
+        catch (Exception ex)
+        {
+            _status = $"Карта: {ex.Message}";
+        }
+    }
+
+    private async Task ReloadAsync()
+    {
+        var vans = await Api.GetVehiclesAsync();
+        var id = Session.VehicleId ?? Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+        _vehicle = vans.FirstOrDefault(v => v.Id == id) ?? vans.FirstOrDefault();
+        var etas = await Api.GetEtaAsync();
+        _next = etas.Where(e => _vehicle is null || e.VehicleId == _vehicle.Id)
+            .OrderBy(e => e.MinutesUntilArrival)
+            .FirstOrDefault();
+        var routes = await Api.GetRoutesAsync();
+        _stops = routes
+            .Where(r => _vehicle is null || r.VehicleId == _vehicle.Id)
+            .SelectMany(r => r.Stops)
+            .OrderBy(s => s.Sequence)
+            .ToList();
+    }
+
+    private async Task LoopAsync(CancellationToken ct)
+    {
+        while (!ct.IsCancellationRequested)
+        {
+            try
+            {
+                await ReloadAsync();
+                await InvokeAsync(async () =>
+                {
+                    await DrawAsync();
+                    StateHasChanged();
+                });
+            }
+            catch
+            {
+                // keep demo loop alive
+            }
+
+            await Task.Delay(8000, ct);
+        }
+    }
+
+    private async Task DrawAsync()
+    {
+        if (_map is null)
+        {
+            return;
+        }
+
+        var routes = await Api.GetRoutesAsync();
+        var markers = new List<object>();
+        foreach (var stop in routes
+            .Where(r => _vehicle is null || r.VehicleId == _vehicle.Id)
+            .SelectMany(r => r.Stops))
+        {
+            markers.Add(new
+            {
+                lat = stop.Latitude,
+                lng = stop.Longitude,
+                kind = "stop",
+                emoji = "•",
+                popup = $"<b>{stop.SettlementName}</b><br/>план {stop.PlannedArrivalUtc.ToLocalTime():HH:mm}"
+            });
+        }
+
+        if (_vehicle?.LastLatitude is double lat && _vehicle.LastLongitude is double lng)
+        {
+            var live = string.Equals(_vehicle.LastSource, "driver-app", StringComparison.OrdinalIgnoreCase);
+            markers.Add(new
+            {
+                lat,
+                lng,
+                kind = "van",
+                emoji = "🚐",
+                popup = $"<b>{_vehicle.PlateNumber}</b><br/>{(_vehicle.OperatorName)}<br/>{(live ? "live с телефона" : "демо-GPS")}"
+            });
+        }
+
+        await _map.InvokeVoidAsync("setMarkers", "staff-drive-map", markers);
+    }
+
+    private async Task ArriveAsync(RouteStopDto stop)
+    {
+        if (_vehicle is null)
+        {
+            return;
+        }
+
+        _arriving = true;
+        try
+        {
+            await Api.ArriveAtStopAsync(stop.Id, _vehicle.Id);
+            _status = $"На месте: {stop.SettlementName}. Пуш ушёл в избранное этой остановки.";
+        }
+        catch (Exception ex)
+        {
+            _status = ex.Message;
+        }
+        finally
+        {
+            _arriving = false;
+        }
+    }
+
+    private async Task StartLiveAsync()
+    {
+        if (_geo is null || _self is null)
+        {
+            return;
+        }
+
+        _watchId = await _geo.InvokeAsync<int>("startWatch", _self);
+        _live = true;
+        _status = "Ждём точку с GPS…";
+    }
+
+    private async Task StartDemoAsync()
+    {
+        if (_geo is null || _self is null)
+        {
+            return;
+        }
+
+        var points = _stops.Select(s => new { lat = s.Latitude, lng = s.Longitude }).ToArray();
+        if (points.Length == 0)
+        {
+            points =
+            [
+                new { lat = 53.5774, lng = 27.7472 },
+                new { lat = 53.5085, lng = 27.8372 },
+                new { lat = 53.6786, lng = 27.9525 }
+            ];
+        }
+
+        _watchId = await _geo.InvokeAsync<int>("startDemo", _self, points);
+        _live = true;
+        _status = $"Демо-трансляция по рейсу {_vehicle?.OperatorName}";
+    }
+
+    private async Task StopAsync()
+    {
+        if (_geo is not null && _watchId != 0)
+        {
+            await _geo.InvokeVoidAsync("stop", _watchId);
+        }
+
+        _live = false;
+        _watchId = 0;
+        _status = "Трансляция остановлена";
+    }
+
+    [JSInvokable]
+    public async Task OnGeo(double lat, double lng, double? speedKmh)
+    {
+        if (_vehicle is null)
+        {
+            return;
+        }
+
+        await Api.IngestPositionAsync(_vehicle.Id, lat, lng, speedKmh);
+        _status = $"В эфире {lat:F4}, {lng:F4}";
+        await ReloadAsync();
+        await DrawAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
+    public Task OnGeoError(string message)
+    {
+        _status = message + ". Можно включить «Демо-маршрут».";
+        return InvokeAsync(StateHasChanged);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _poll?.Cancel();
+        _poll?.Dispose();
+        if (_geo is not null && _watchId != 0)
+        {
+            await _geo.InvokeVoidAsync("stop", _watchId);
+        }
+
+        _self?.Dispose();
+    }
+}

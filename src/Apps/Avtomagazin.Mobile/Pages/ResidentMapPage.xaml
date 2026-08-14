@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:mapsui="clr-namespace:Mapsui.UI.Maui;assembly=Mapsui.Maui"
+             x:Class="Avtomagazin.Mobile.ResidentMapPage"
+             Title="Когда приедет"
+             BackgroundColor="#12241C">
+    <Grid RowDefinitions="Auto,Auto,*,Auto" Padding="16,8">
+        <VerticalStackLayout Spacing="8">
+            <Label x:Name="Banner" TextColor="#F0C7B0" FontSize="13" />
+            <Button Text="Ближайшая остановка" Clicked="OnNearest" BackgroundColor="#3DBA7A" TextColor="#082014" />
+            <Label x:Name="NearestHint" TextColor="#A7B8AD" FontSize="13" />
+            <ScrollView Orientation="Horizontal">
+                <HorizontalStackLayout x:Name="Chips" Spacing="8" />
+            </ScrollView>
+        </VerticalStackLayout>
+        <mapsui:MapControl x:Name="MapView" Grid.Row="2" Margin="0,10" />
+        <VerticalStackLayout Grid.Row="3" x:Name="EtaList" Spacing="8" Margin="0,10,0,0" />
+    </Grid>
+</ContentPage>

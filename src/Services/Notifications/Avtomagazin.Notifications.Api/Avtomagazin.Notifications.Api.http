@@ -1,0 +1,6 @@
+@Avtomagazin.Notifications.Api_HostAddress = http://localhost:5298
+
+GET {{Avtomagazin.Notifications.Api_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

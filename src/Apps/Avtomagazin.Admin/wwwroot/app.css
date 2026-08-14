@@ -1,0 +1,138 @@
+:root {
+    --bg: #12241c;
+    --ink: #f3f7f3;
+    --muted: #a7b8ad;
+    --panel: #1b3328;
+    --line: #2c4a3c;
+    --accent: #3dba7a;
+    --accent-ink: #082014;
+    --warn: #f0c7b0;
+    --warn-bg: #3a2a22;
+    --radius: 16px;
+    --ui: "IBM Plex Sans", "Segoe UI", sans-serif;
+}
+
+* { box-sizing: border-box; }
+html, body {
+    margin: 0;
+    min-height: 100%;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--ui);
+}
+
+.app { min-height: 100vh; display: flex; flex-direction: column; max-width: 780px; margin: 0 auto; }
+.main { flex: 1; padding: 0 1rem 5.5rem; }
+.topbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.9rem 1rem 0.4rem;
+}
+.brand { font-weight: 750; }
+.who { color: var(--muted); font-size: 0.82rem; }
+.link { background: none; border: 0; color: var(--accent); font: inherit; cursor: pointer; }
+
+.tabbar {
+    position: sticky;
+    bottom: 0;
+    display: flex;
+    gap: 0.4rem;
+    padding: 0.65rem 1rem calc(0.65rem + env(safe-area-inset-bottom));
+    background: rgba(18, 36, 28, 0.94);
+    border-top: 1px solid var(--line);
+}
+.tabbar a {
+    flex: 1;
+    text-align: center;
+    color: var(--muted);
+    text-decoration: none;
+    padding: 0.45rem 0.15rem;
+    border-radius: 12px;
+    font-size: 0.78rem;
+}
+.tabbar a.active { color: var(--ink); background: var(--panel); }
+
+.hero-login h1 { font-size: clamp(1.7rem, 6vw, 2.3rem); margin: 0.2rem 0 0.5rem; }
+.eyebrow { color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.72rem; }
+.sub, .muted { color: var(--muted); }
+.tiny { font-size: 0.78rem; }
+
+.role-card, .sheet, .eta-card {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 1rem;
+}
+.role-card {
+    display: grid;
+    gap: 0.35rem;
+    text-align: left;
+    color: inherit;
+    margin-bottom: 0.65rem;
+}
+.role-card span { color: var(--muted); font-size: 0.92rem; }
+
+.sheet { margin: 0.85rem 0; }
+.stack { display: flex; flex-direction: column; gap: 0.55rem; }
+.row { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+
+.btn, .chip {
+    border: 0;
+    cursor: pointer;
+    font: inherit;
+    border-radius: 12px;
+    padding: 0.7rem 1rem;
+}
+.btn { background: var(--accent); color: var(--accent-ink); }
+.btn-ghost { background: transparent; color: var(--ink); border: 1px solid var(--line); }
+.btn:disabled { opacity: 0.4; }
+
+.map {
+    height: 240px;
+    border-radius: 14px;
+    overflow: hidden;
+    border: 1px solid var(--line);
+    margin: 0.7rem 0;
+    background: #0f1f18;
+}
+.map-tall { height: min(48vh, 380px); }
+
+.eta-kicker { font-size: 0.72rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+.eta-title { font-size: 1.3rem; font-weight: 700; }
+
+.list-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.7rem 0;
+    border-bottom: 1px solid var(--line);
+}
+.right { color: var(--muted); font-variant-numeric: tabular-nums; }
+
+input, select {
+    background: #12261d;
+    color: var(--ink);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 0.65rem 0.75rem;
+    font: inherit;
+}
+
+.table { width: 100%; border-collapse: collapse; }
+.table th, .table td { padding: 0.55rem 0.4rem; border-bottom: 1px solid var(--line); text-align: left; }
+.form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 0.5rem; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 1rem; margin: 0.8rem 0; }
+.alert { background: var(--warn-bg); color: var(--warn); padding: 0.7rem 0.9rem; border-radius: 12px; }
+.ok { color: var(--accent); }
+h1, h2, h3 { margin-top: 0.2rem; }
+
+.avto-pin { background: none; border: 0; }
+.avto-pin-inner {
+    width: 32px; height: 32px; border-radius: 50%;
+    display: grid; place-items: center;
+    box-shadow: 0 8px 18px rgba(0,0,0,.35);
+}
+.avto-pin-van { background: #3dba7a; }
+.avto-pin-stop { background: #f3f7f3; color: #1b3328; }
+.leaflet-container { font-family: var(--ui); background: #0f1f18; }

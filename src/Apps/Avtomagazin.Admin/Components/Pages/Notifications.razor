@@ -1,0 +1,75 @@
+@page "/notifications"
+@rendermode InteractiveServer
+@inject AvtomagazinClient Api
+@inject StaffSession Session
+@inject NavigationManager Nav
+
+<PageTitle>Уведомления</PageTitle>
+
+<h1>Лог пушей</h1>
+
+<div class="form-grid">
+    <input @bind="_settlement" placeholder="Деревня" />
+    <button class="btn" @onclick="ReloadAsync">Обновить</button>
+</div>
+
+@if (!string.IsNullOrEmpty(_error))
+{
+    <div class="alert">@_error</div>
+}
+else
+{
+    <table class="table">
+        <thead>
+        <tr>
+            <th>Когда</th>
+            <th>Пункт</th>
+            <th>Заголовок</th>
+            <th>Текст</th>
+            <th>Получателей</th>
+        </tr>
+        </thead>
+        <tbody>
+        @foreach (var n in _items)
+        {
+            <tr>
+                <td>@n.SentAtUtc.ToLocalTime().ToString("dd.MM HH:mm:ss")</td>
+                <td>@n.SettlementName</td>
+                <td>@n.Title</td>
+                <td>@n.Body</td>
+                <td>@n.RecipientCount</td>
+            </tr>
+        }
+        </tbody>
+    </table>
+}
+
+@code {
+    private string? _error;
+    private string _settlement = "";
+    private List<NotificationDto> _items = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!Session.IsAuthenticated)
+        {
+            Nav.NavigateTo("/");
+            return;
+        }
+
+        await ReloadAsync();
+    }
+
+    private async Task ReloadAsync()
+    {
+        try
+        {
+            _items = await Api.GetNotificationsAsync(string.IsNullOrWhiteSpace(_settlement) ? null : _settlement);
+            _error = null;
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+    }
+}

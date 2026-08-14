@@ -1,0 +1,247 @@
+{
+  "info": {
+    "name": "Avtomagazin",
+    "description": "API smoke tests for Avtomagazin microservices via Gateway",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://127.0.0.1:5100" },
+    { "key": "token", "value": "" },
+    { "key": "vehicleId", "value": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa" },
+    { "key": "stopId", "value": "dddddddd-dddd-dddd-dddd-ddddddddddd1" },
+    { "key": "deviceToken", "value": "postman-device-1" }
+  ],
+  "item": [
+    {
+      "name": "Gateway health",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('status 200', () => pm.response.to.have.status(200));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/health"
+      }
+    },
+    {
+      "name": "Login operator",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('status 200', () => pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.test('has token', () => pm.expect(json.accessToken).to.be.a('string').and.not.empty);",
+              "pm.collectionVariables.set('token', json.accessToken);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"operator@demo.by\",\n  \"password\": \"demo\"\n}"
+        },
+        "url": "{{baseUrl}}/identity/api/auth/login"
+      }
+    },
+    {
+      "name": "List vehicles",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('status 200', () => pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.test('has vehicles', () => pm.expect(json.length).to.be.above(0));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/fleet/api/vehicles"
+      }
+    },
+    {
+      "name": "Ingest GPS position",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('status 201', () => pm.response.to.have.status(201));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"latitude\": 53.65,\n  \"longitude\": 23.85,\n  \"speedKmh\": 35,\n  \"source\": \"postman\"\n}"
+        },
+        "url": "{{baseUrl}}/fleet/api/vehicles/{{vehicleId}}/positions"
+      }
+    },
+    {
+      "name": "List routes",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('status 200', () => pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.test('has routes', () => pm.expect(json.length).to.be.above(0));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/routing/api/routes"
+      }
+    },
+    {
+      "name": "Get ETA for Indura",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('status 200', () => pm.response.to.have.status(200));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/routing/api/eta?settlement=%D0%98%D0%BD%D0%B4%D1%83%D1%80%D0%B0"
+      }
+    },
+    {
+      "name": "Register push device",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('status 200', () => pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.test('settlement saved', () => pm.expect(json.settlementName).to.eql('Индура'));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"deviceToken\": \"{{deviceToken}}\",\n  \"platform\": \"ios\",\n  \"settlementName\": \"Индура\"\n}"
+        },
+        "url": "{{baseUrl}}/notifications/api/devices/register"
+      }
+    },
+    {
+      "name": "Add favorite stop",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('status 200', () => pm.response.to.have.status(200));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"deviceToken\": \"{{deviceToken}}\",\n  \"platform\": \"ios\",\n  \"stopId\": \"{{stopId}}\",\n  \"settlementName\": \"Индура\"\n}"
+        },
+        "url": "{{baseUrl}}/notifications/api/favorites"
+      }
+    },
+    {
+      "name": "Driver arrived at stop",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('status 200', () => pm.response.to.have.status(200));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"vehicleId\": \"{{vehicleId}}\"\n}"
+        },
+        "url": "{{baseUrl}}/routing/api/stops/{{stopId}}/arrived"
+      }
+    },
+    {
+      "name": "Record coverage visit",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('status 201', () => pm.response.to.have.status(201));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"vehicleId\": \"{{vehicleId}}\",\n  \"stopId\": \"{{stopId}}\",\n  \"withinScheduledWindow\": true\n}"
+        },
+        "url": "{{baseUrl}}/routing/api/coverage/visit"
+      }
+    },
+    {
+      "name": "List notifications",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('status 200', () => pm.response.to.have.status(200));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/notifications/api/notifications?settlement=%D0%98%D0%BD%D0%B4%D1%83%D1%80%D0%B0"
+      }
+    }
+  ]
+}
