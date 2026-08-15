@@ -1,5 +1,4 @@
 ﻿@page "/"
-@rendermode InteractiveServer
 @inject StaffSession Session
 @implements IDisposable
 
@@ -7,17 +6,32 @@
 {
     <LoginPanel />
 }
-else if (Session.IsDriver)
-{
-    <DrivePanel />
-}
 else
 {
-    <DispatchPanel />
+    <div class="page-head">
+        <div>
+            <div class="brand">Автомагазин</div>
+            <div class="who">@(Session.IsDriver ? "Водитель" : Session.IsAdmin ? "Админ" : "Диспетчер") · @Session.Name</div>
+        </div>
+        <button type="button" class="btn btn-ghost" @onclick="Session.SignOut">Выйти</button>
+    </div>
+    @if (Session.IsDriver)
+    {
+        <DrivePanel />
+    }
+    else
+    {
+        <DispatchPanel />
+    }
 }
 
 @code {
-    protected override void OnInitialized() => Session.Changed += OnChanged;
+    protected override async Task OnInitializedAsync()
+    {
+        Session.Changed += OnChanged;
+        await Session.RestoreAsync();
+    }
+
     private void OnChanged() => InvokeAsync(StateHasChanged);
     public void Dispose() => Session.Changed -= OnChanged;
 }

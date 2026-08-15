@@ -1,94 +1,305 @@
 @inject AvtomagazinClient Api
+@inject StaffSession Session
 @inject IJSRuntime Js
 @implements IAsyncDisposable
 
-<section class="sheet">
-    <h2>Все автолавки</h2>
-    <p class="muted">Живая карта. Зелёная точка — трансляция с телефона водителя.</p>
-    <div class="map map-tall" id="staff-dispatch-map"></div>
-</section>
-
-<section class="sheet">
-    <h3>Отметки жителей</h3>
-    @if (_reports.Count == 0)
-    {
-        <p class="muted">Пока нет. Житель на карточке остановки жмёт «На месте» / «Не приехала».</p>
-    }
-    @foreach (var report in _reports.Take(8))
-    {
-        <div class="list-row">
-            <div>
-                <strong>@report.SettlementName</strong>
-                <div class="muted">@(report.Kind == "on-site" ? "на месте" : "не приехала")</div>
-            </div>
-            <div class="right">@report.ReportedAtUtc.ToLocalTime().ToString("HH:mm")</div>
+<div class="dispatch">
+    <div class="pulse">
+        <div class="pulse-item">
+            <span class="pulse-n">@_liveCount</span>
+            <span class="pulse-l">в эфире</span>
         </div>
-    }
-</section>
-
-<section class="sheet">
-    <h3>Пуши</h3>
-    @if (_pushes.Count == 0)
-    {
-        <p class="muted">Лог пустой. Появится, когда водитель нажмёт «На месте».</p>
-    }
-    @foreach (var push in _pushes.Take(6))
-    {
-        <div class="list-row">
-            <div>
-                <strong>@push.Title</strong>
-                <div class="muted">@push.Body · @push.RecipientCount получателей</div>
-            </div>
-            <div class="right">@push.SentAtUtc.ToLocalTime().ToString("HH:mm")</div>
+        <div class="pulse-item">
+            <span class="pulse-n">@_signalCount</span>
+            <span class="pulse-l">с GPS</span>
         </div>
-    }
-</section>
-
-<section class="sheet">
-    <h3>Покрытие</h3>
-    @if (_coverage.Count == 0)
-    {
-        <p class="muted">Визитов ещё нет — их пишет кнопка водителя «На месте».</p>
-    }
-    @foreach (var visit in _coverage.Take(6))
-    {
-        <div class="list-row">
-            <div>
-                <strong>@visit.SettlementName</strong>
-                <div class="muted">@(visit.WithinScheduledWindow ? "в окне" : "вне окна") · @visit.RegionCode</div>
-            </div>
-            <div class="right">@visit.ArrivedAtUtc.ToLocalTime().ToString("HH:mm")</div>
+        <div class="pulse-item @(_cases.Count > 0 ? "pulse-warn" : null)">
+            <span class="pulse-n">@_cases.Sum(c => c.ReportCount)</span>
+            <span class="pulse-l">жалобы</span>
         </div>
-    }
-</section>
+        <div class="pulse-item">
+            <span class="pulse-n">@_activeCount</span>
+            <span class="pulse-l">в парке</span>
+        </div>
+    </div>
 
-<section class="sheet">
-    <h3>Сейчас в рейсе</h3>
-    @foreach (var van in _vans)
-    {
-        var live = string.Equals(van.LastSource, "driver-app", StringComparison.OrdinalIgnoreCase);
-        <div class="list-row">
-            <div>
-                <strong>@van.PlateNumber</strong>
-                <div class="muted">@van.OperatorName · @(live ? "live" : van.LastSource ?? "нет сигнала")</div>
+    <div class="map-stage">
+        <div class="map map-hero" id="staff-dispatch-map"></div>
+        <div class="map-legend">
+            <span><i class="dot live"></i> эфир</span>
+            <span><i class="dot stale"></i> GPS</span>
+            <span><i class="dot stop"></i> остановка</span>
+        </div>
+    </div>
+
+    <section class="block">
+        <header class="block-head">
+            <h2>Внимание</h2>
+            <span class="block-meta">@FilteredCases.Count()</span>
+        </header>
+        <div class="attn-tools">
+            <div class="filter-chips" role="tablist" aria-label="Статус">
+                <button type="button" class="chip @(_statusFilter == "active" ? "chip-on" : null)" @onclick='() => SetStatusFilterAsync("active")'>Активные</button>
+                <button type="button" class="chip @(_statusFilter == "open" ? "chip-on" : null)" @onclick='() => SetStatusFilterAsync("open")'>Открыты</button>
+                <button type="button" class="chip @(_statusFilter == "in_progress" ? "chip-on" : null)" @onclick='() => SetStatusFilterAsync("in_progress")'>В процессе</button>
+                <button type="button" class="chip @(_statusFilter == "closed" ? "chip-on" : null)" @onclick='() => SetStatusFilterAsync("closed")'>Закрыты</button>
+                <button type="button" class="chip @(_statusFilter == "all" ? "chip-on" : null)" @onclick='() => SetStatusFilterAsync("all")'>Все</button>
             </div>
-            <div class="right">
-                @if (van.LastSeenAtUtc is DateTimeOffset seen)
+            <input class="attn-search" @bind="_settlementQuery" @bind:event="oninput" placeholder="Поиск по населённому пункту" />
+        </div>
+        @if (!FilteredCases.Any())
+        {
+            <p class="empty">@(string.IsNullOrWhiteSpace(_settlementQuery) ? "Нет кейсов по этому фильтру." : "Ничего не найдено.")</p>
+        }
+        else
+        {
+            <ul class="feed">
+                @foreach (var item in FilteredCases)
                 {
-                    <span>@seen.ToLocalTime().ToString("HH:mm:ss")</span>
+                    var van = VanOf(item.VehicleId);
+                    <li class="feed-row @(item.Status == "closed" ? null : "warn") feed-action" @onclick="() => OpenCaseAsync(item.Id)">
+                        <div>
+                            <strong>@item.SettlementName</strong>
+                            <span class="feed-sub">
+                                @People(item.ReportCount) · @StatusLabel(item.Status)
+                                @if (van is not null)
+                                {
+                                    <text> · @van.PlateNumber</text>
+                                }
+                            </span>
+                        </div>
+                        <div class="feed-side">
+                            <span class="eta-min">@item.ReportCount</span>
+                            <time>@Ago(item.UpdatedAtUtc)</time>
+                        </div>
+                    </li>
+                }
+            </ul>
+        }
+    </section>
+
+    <section class="block">
+        <header class="block-head">
+            <h2>Парк</h2>
+            <span class="block-meta">@_vans.Count авто</span>
+        </header>
+        @if (_vans.Count == 0)
+        {
+            <p class="empty">Автолавок пока нет — добавьте во вкладке «Парк».</p>
+        }
+        else
+        {
+            <ul class="feed">
+                @foreach (var van in OrderedVans)
+                {
+                    var state = VanState(van);
+                    <li class="feed-row">
+                        <div class="van-line">
+                            <i class="dot @state.Css"></i>
+                            <div>
+                                <strong>@van.PlateNumber</strong>
+                                <span class="feed-sub">@van.OperatorName</span>
+                            </div>
+                        </div>
+                        <div class="feed-side">
+                            <span>@state.Label</span>
+                            @if (van.LastSeenAtUtc is DateTimeOffset seen)
+                            {
+                                <time>@Ago(seen)</time>
+                            }
+                        </div>
+                    </li>
+                }
+            </ul>
+        }
+    </section>
+
+    @if (_etas.Count > 0)
+    {
+        <section class="block">
+            <header class="block-head">
+                <h2>Ближайшие</h2>
+                <span class="block-meta">ETA</span>
+            </header>
+            <ul class="feed">
+                @foreach (var eta in _etas.OrderBy(e => e.MinutesUntilArrival).Take(5))
+                {
+                    <li class="feed-row">
+                        <div>
+                            <strong>@eta.SettlementName</strong>
+                            <span class="feed-sub">@PlateOf(eta.VehicleId)</span>
+                        </div>
+                        <div class="feed-side">
+                            <span class="eta-min">~@eta.MinutesUntilArrival мин</span>
+                            <time>@eta.EstimatedArrivalUtc.ToLocalTime().ToString("HH:mm")</time>
+                        </div>
+                    </li>
+                }
+            </ul>
+        </section>
+    }
+</div>
+
+@if (_detail is not null)
+{
+    <div class="case-modal" @onclick="CloseCase">
+        <div class="case-dialog" @onclick:stopPropagation="true" role="dialog" aria-modal="true">
+            <header class="case-sheet-head">
+                <div>
+                    <div class="eyebrow">Инцидент</div>
+                    <h2>@_detail.SettlementName</h2>
+                    <p class="muted">@StatusLabel(_detail.Status) · @People(_detail.ReportCount)</p>
+                </div>
+                <button type="button" class="btn btn-ghost" @onclick="CloseCase">Закрыть</button>
+            </header>
+            <div class="case-dialog-scroll">
+        @{
+            var caseVan = VanOf(_detail.VehicleId);
+        }
+        @if (caseVan is not null)
+        {
+            <section class="case-block">
+                <h3>Автолавка</h3>
+                <p class="case-plate">@caseVan.PlateNumber · @caseVan.OperatorName</p>
+                <ul class="contact-list">
+                    @if (!string.IsNullOrWhiteSpace(caseVan.DriverPhone))
+                    {
+                        <li>
+                            <span>Водитель @(caseVan.DriverName ?? "")</span>
+                            <a href="tel:@Digits(caseVan.DriverPhone)">@caseVan.DriverPhone</a>
+                        </li>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(caseVan.SellerPhone))
+                    {
+                        <li>
+                            <span>Продавец @(caseVan.SellerName ?? "")</span>
+                            <a href="tel:@Digits(caseVan.SellerPhone)">@caseVan.SellerPhone</a>
+                        </li>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(caseVan.OperatorPhone))
+                    {
+                        <li>
+                            <span>Райпо</span>
+                            <a href="tel:@Digits(caseVan.OperatorPhone)">@caseVan.OperatorPhone</a>
+                        </li>
+                    }
+                    @if (string.IsNullOrWhiteSpace(caseVan.DriverPhone)
+                         && string.IsNullOrWhiteSpace(caseVan.SellerPhone)
+                         && string.IsNullOrWhiteSpace(caseVan.OperatorPhone))
+                    {
+                        <li class="muted">Контактов нет — добавьте во вкладке «Парк».</li>
+                    }
+                </ul>
+            </section>
+        }
+        else
+        {
+            <section class="case-block">
+                <p class="muted">Автолавка по маршруту не найдена.</p>
+            </section>
+        }
+
+        <section class="case-block">
+            <h3>Действия</h3>
+            <label class="case-field">
+                <span>Комментарий</span>
+                <textarea @bind="_comment" rows="2" placeholder="Что сделали / что ждём"></textarea>
+            </label>
+            <div class="row">
+                <button type="button" class="btn" disabled="@(_busy || string.IsNullOrWhiteSpace(_comment))" @onclick="AddCommentAsync">Коммент</button>
+                <button type="button" class="btn @(_detail.Status == "in_progress" ? "" : "btn-ghost")" disabled="@_busy"
+                        @onclick="MarkInProgressAsync">В процессе</button>
+                <button type="button" class="btn btn-ghost" disabled="@_busy"
+                        @onclick="CloseCaseStatusAsync">Закрыть кейс</button>
+                @if (_detail.Status == "closed")
+                {
+                    <button type="button" class="btn btn-ghost" disabled="@_busy"
+                            @onclick="ReopenCaseAsync">Снова открыть</button>
                 }
             </div>
+        </section>
+
+        <section class="case-block">
+            <h3>История</h3>
+            @if (_detail.Events.Count == 0)
+            {
+                <p class="muted">Пока пусто.</p>
+            }
+            else
+            {
+                <ul class="timeline">
+                    @foreach (var ev in _detail.Events.OrderByDescending(e => e.CreatedAtUtc))
+                    {
+                        <li>
+                            <div class="timeline-top">
+                                <strong>@EventKind(ev)</strong>
+                                <time>@ev.CreatedAtUtc.ToLocalTime().ToString("dd.MM HH:mm")</time>
+                            </div>
+                            <p>@ev.Body</p>
+                            @if (!string.IsNullOrWhiteSpace(ev.StopLabel))
+                            {
+                                <p class="tiny muted">@ev.StopLabel</p>
+                            }
+                            @if (!string.IsNullOrWhiteSpace(ev.AuthorName) || !string.IsNullOrWhiteSpace(ev.AuthorEmail))
+                            {
+                                <p class="tiny muted">@(ev.AuthorName ?? ev.AuthorEmail)</p>
+                            }
+                        </li>
+                    }
+                </ul>
+            }
+        </section>
+
+        @if (!string.IsNullOrEmpty(_caseError))
+        {
+            <div class="alert">@_caseError</div>
+        }
+            </div>
         </div>
-    }
-</section>
+    </div>
+}
 
 @code {
     private List<VehicleDto> _vans = [];
-    private List<PresenceReportDto> _reports = [];
-    private List<NotificationDto> _pushes = [];
-    private List<CoverageDto> _coverage = [];
+    private List<CaseSummaryDto> _cases = [];
+    private List<EtaDto> _etas = [];
+    private CaseDetailDto? _detail;
+    private string _comment = "";
+    private string _statusFilter = "active";
+    private string _settlementQuery = "";
+    private string? _caseError;
+    private bool _busy;
     private IJSObjectReference? _map;
     private CancellationTokenSource? _poll;
+
+    private int _liveCount => _vans.Count(IsLive);
+    private int _signalCount => _vans.Count(v => v.LastLatitude is not null);
+    private int _activeCount => _vans.Count(v => v.IsActive);
+
+    private IEnumerable<CaseSummaryDto> FilteredCases
+    {
+        get
+        {
+            IEnumerable<CaseSummaryDto> items = _cases;
+            if (!string.IsNullOrWhiteSpace(_settlementQuery))
+            {
+                var q = _settlementQuery.Trim();
+                items = items.Where(c =>
+                    c.SettlementName.Contains(q, StringComparison.OrdinalIgnoreCase)
+                    || c.SettlementKey.Contains(q, StringComparison.OrdinalIgnoreCase));
+            }
+
+            return items
+                .OrderByDescending(c => c.Status != "closed")
+                .ThenByDescending(c => c.ReportCount)
+                .ThenByDescending(c => c.UpdatedAtUtc);
+        }
+    }
+
+    private IEnumerable<VehicleDto> OrderedVans =>
+        _vans
+            .OrderByDescending(IsLive)
+            .ThenByDescending(v => v.LastSeenAtUtc ?? DateTimeOffset.MinValue);
 
     protected override async Task OnInitializedAsync()
     {
@@ -112,7 +323,6 @@
         }
         catch
         {
-            // OSM tiles need network
         }
     }
 
@@ -142,14 +352,29 @@
         _vans = await Api.GetVehiclesAsync();
         try
         {
-            _reports = await Api.GetPresenceReportsAsync();
-            _pushes = await Api.GetNotificationsAsync();
-            _coverage = await Api.GetCoverageAsync();
+            var status = _statusFilter switch
+            {
+                "active" => "open,in_progress",
+                "all" => "open,in_progress,closed",
+                _ => _statusFilter
+            };
+            _cases = await Api.GetCasesAsync(status);
+            _etas = await Api.GetEtaAsync();
         }
         catch
         {
-            // older API without reports — map still works
         }
+    }
+
+    private async Task SetStatusFilterAsync(string filter)
+    {
+        if (_statusFilter == filter)
+        {
+            return;
+        }
+
+        _statusFilter = filter;
+        await ReloadAsync();
     }
 
     private async Task DrawAsync()
@@ -168,29 +393,193 @@
                 lat = stop.Latitude,
                 lng = stop.Longitude,
                 kind = "stop",
-                emoji = "•",
+                emoji = "",
                 popup = $"<b>{stop.SettlementName}</b><br/>{stop.PlannedArrivalUtc.ToLocalTime():dd.MM HH:mm}"
             });
         }
 
         foreach (var van in _vans.Where(v => v.LastLatitude is not null))
         {
-            var live = string.Equals(van.LastSource, "driver-app", StringComparison.OrdinalIgnoreCase);
+            var live = IsLive(van);
             markers.Add(new
             {
                 lat = van.LastLatitude,
                 lng = van.LastLongitude,
-                kind = "van",
-                emoji = "🚐",
-                popup = $"<b>{van.PlateNumber}</b><br/>{van.OperatorName}<br/>{(live ? "трансляция с приложения" : "адаптер / демо")}"
+                kind = live ? "van" : "van-stale",
+                emoji = "",
+                popup = $"<b>{van.PlateNumber}</b><br/>{van.OperatorName}<br/>{(live ? "в эфире" : "последний GPS")}"
             });
         }
 
         await _map.InvokeVoidAsync("setMarkers", "staff-dispatch-map", markers);
     }
 
+    private async Task OpenCaseAsync(Guid id)
+    {
+        _caseError = null;
+        _comment = "";
+        try
+        {
+            _detail = await Api.GetCaseAsync(id);
+            await SetBodyLockAsync(true);
+        }
+        catch (Exception ex)
+        {
+            _caseError = ex.Message;
+        }
+    }
+
+    private async Task CloseCase()
+    {
+        _detail = null;
+        _caseError = null;
+        await SetBodyLockAsync(false);
+    }
+
+    private async Task SetBodyLockAsync(bool locked)
+    {
+        try
+        {
+            await Js.InvokeVoidAsync(
+                "eval",
+                locked
+                    ? "document.documentElement.classList.add('case-open');document.body.classList.add('case-open');"
+                    : "document.documentElement.classList.remove('case-open');document.body.classList.remove('case-open');");
+        }
+        catch
+        {
+        }
+    }
+
+    private async Task AddCommentAsync()
+    {
+        if (_detail is null || string.IsNullOrWhiteSpace(_comment))
+        {
+            return;
+        }
+
+        _busy = true;
+        _caseError = null;
+        try
+        {
+            _detail = await Api.AddCaseCommentAsync(_detail.Id, _comment.Trim());
+            _comment = "";
+            await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            _caseError = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private Task MarkInProgressAsync() => SetStatusAsync("in_progress");
+    private Task CloseCaseStatusAsync() => SetStatusAsync("closed");
+    private Task ReopenCaseAsync() => SetStatusAsync("open");
+
+    private async Task SetStatusAsync(string status)
+    {
+        if (_detail is null)
+        {
+            return;
+        }
+
+        _busy = true;
+        _caseError = null;
+        try
+        {
+            var note = string.IsNullOrWhiteSpace(_comment) ? null : _comment.Trim();
+            _detail = await Api.SetCaseStatusAsync(_detail.Id, status, note);
+            _comment = "";
+            await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            _caseError = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private VehicleDto? VanOf(Guid? vehicleId)
+        => vehicleId is Guid id ? _vans.FirstOrDefault(v => v.Id == id) : null;
+
+    private string PlateOf(Guid vehicleId)
+        => _vans.FirstOrDefault(v => v.Id == vehicleId)?.PlateNumber ?? "—";
+
+    private static bool IsLive(VehicleDto van)
+        => string.Equals(van.LastSource, "driver-app", StringComparison.OrdinalIgnoreCase);
+
+    private static (string Css, string Label) VanState(VehicleDto van)
+    {
+        if (IsLive(van))
+        {
+            return ("live", "эфир");
+        }
+
+        if (van.LastLatitude is not null)
+        {
+            return ("stale", "GPS");
+        }
+
+        return ("off", "нет сигнала");
+    }
+
+    private static string StatusLabel(string status) => status switch
+    {
+        "open" => "открыта",
+        "in_progress" => "в процессе",
+        "closed" => "закрыта",
+        _ => status
+    };
+
+    private static string EventKind(CaseEventDto ev) => ev.Kind switch
+    {
+        "report" => "Жалоба",
+        "status" => "Статус",
+        "comment" => "Комментарий",
+        _ => ev.Kind
+    };
+
+    private static string People(int count) => count switch
+    {
+        1 => "1 человек",
+        >= 2 and <= 4 => $"{count} человека",
+        _ => $"{count} человек"
+    };
+
+    private static string Digits(string phone)
+        => new string(phone.Where(c => char.IsDigit(c) || c == '+').ToArray());
+
+    private static string Ago(DateTimeOffset when)
+    {
+        var delta = DateTimeOffset.UtcNow - when.ToUniversalTime();
+        if (delta.TotalSeconds < 60)
+        {
+            return "сейчас";
+        }
+
+        if (delta.TotalMinutes < 60)
+        {
+            return $"{(int)delta.TotalMinutes} мин";
+        }
+
+        if (delta.TotalHours < 24)
+        {
+            return $"{(int)delta.TotalHours} ч";
+        }
+
+        return when.ToLocalTime().ToString("dd.MM HH:mm");
+    }
+
     public async ValueTask DisposeAsync()
     {
+        await SetBodyLockAsync(false);
         _poll?.Cancel();
         _poll?.Dispose();
         if (_map is not null)

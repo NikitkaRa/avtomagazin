@@ -7,6 +7,8 @@ export function init(id, lat, lon, zoom) {
     if (el._avtoMap) {
         el._avtoMap.remove();
         el._avtoMap = null;
+        el._avtoClusters = null;
+        el._avtoVans = null;
     }
 
     const map = L.map(el, { zoomControl: true, attributionControl: true });
@@ -16,47 +18,73 @@ export function init(id, lat, lon, zoom) {
     }).addTo(map);
     map.setView([lat, lon], zoom);
     el._avtoMap = map;
-    el._avtoMarkers = L.layerGroup().addTo(map);
+
+    if (typeof L.markerClusterGroup === "function") {
+        el._avtoClusters = L.markerClusterGroup({
+            showCoverageOnHover: false,
+            maxClusterRadius: 56,
+            spiderfyOnMaxZoom: true,
+            disableClusteringAtZoom: 16
+        }).addTo(map);
+    } else {
+        el._avtoClusters = L.layerGroup().addTo(map);
+    }
+
+    el._avtoVans = L.layerGroup().addTo(map);
+    el._avtoFitted = false;
+    el._avtoUserMoved = false;
+
+    const lockView = () => { el._avtoUserMoved = true; };
+    map.on("dragstart", lockView);
+    map.on("zoomstart", (e) => {
+        if (e.originalEvent) {
+            lockView();
+        }
+    });
+
     setTimeout(() => map.invalidateSize(), 200);
     return true;
 }
 
 export function setMarkers(id, items) {
     const el = document.getElementById(id);
-    if (!el || !el._avtoMap) {
+    if (!el || !el._avtoMap || !el._avtoClusters || !el._avtoVans) {
         return;
     }
 
-    el._avtoMarkers.clearLayers();
+    el._avtoClusters.clearLayers();
+    el._avtoVans.clearLayers();
     const bounds = [];
 
     for (const item of items) {
+        const isVan = item.kind === "van" || item.kind === "van-stale";
+        const size = item.kind === "van" ? 22 : item.kind === "van-stale" ? 18 : 10;
         const icon = L.divIcon({
             className: "avto-pin",
-            html: `<div class="avto-pin-inner avto-pin-${item.kind}">${item.emoji || ""}</div>`,
-            iconSize: [36, 36],
-            iconAnchor: [18, 18]
+            html: `<div class="avto-pin-inner avto-pin-${item.kind}"></div>`,
+            iconSize: [size, size],
+            iconAnchor: [size / 2, size / 2]
         });
         const marker = L.marker([item.lat, item.lng], { icon });
         if (item.popup) {
             marker.bindPopup(item.popup);
         }
-        marker.addTo(el._avtoMarkers);
+
+        if (isVan) {
+            marker.addTo(el._avtoVans);
+        } else {
+            el._avtoClusters.addLayer(marker);
+        }
+
         bounds.push([item.lat, item.lng]);
     }
 
-    if (bounds.length === 1) {
-        el._avtoMap.setView(bounds[0], 12);
-    } else if (bounds.length > 1) {
-        el._avtoMap.fitBounds(bounds, { padding: [28, 28], maxZoom: 13 });
-    }
-
-    setTimeout(() => el._avtoMap.invalidateSize(), 150);
-}
-
-export function invalidate(id) {
-    const el = document.getElementById(id);
-    if (el && el._avtoMap) {
-        el._avtoMap.invalidateSize();
+    if (bounds.length > 0 && !el._avtoFitted && !el._avtoUserMoved) {
+        if (bounds.length === 1) {
+            el._avtoMap.setView(bounds[0], 12);
+        } else {
+            el._avtoMap.fitBounds(bounds, { padding: [28, 28], maxZoom: 13 });
+        }
+        el._avtoFitted = true;
     }
 }

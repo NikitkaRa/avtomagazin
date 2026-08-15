@@ -51,6 +51,16 @@ using (var scope = app.Services.CreateScope())
     {
         await db.Database.ExecuteSqlRawAsync(
             """ALTER TABLE "Vehicles" ADD COLUMN IF NOT EXISTS "LastSource" character varying(64)""");
+        await db.Database.ExecuteSqlRawAsync(
+            """ALTER TABLE "Vehicles" ADD COLUMN IF NOT EXISTS "DriverName" character varying(120)""");
+        await db.Database.ExecuteSqlRawAsync(
+            """ALTER TABLE "Vehicles" ADD COLUMN IF NOT EXISTS "DriverPhone" character varying(32)""");
+        await db.Database.ExecuteSqlRawAsync(
+            """ALTER TABLE "Vehicles" ADD COLUMN IF NOT EXISTS "SellerName" character varying(120)""");
+        await db.Database.ExecuteSqlRawAsync(
+            """ALTER TABLE "Vehicles" ADD COLUMN IF NOT EXISTS "SellerPhone" character varying(32)""");
+        await db.Database.ExecuteSqlRawAsync(
+            """ALTER TABLE "Vehicles" ADD COLUMN IF NOT EXISTS "OperatorPhone" character varying(32)""");
     }
     await Seed.EnsureSeedAsync(db);
 }
@@ -177,6 +187,29 @@ app.MapPost("/api/vehicles/{id:guid}/positions", async (
 .WithName("IngestPosition")
 .WithTags("Fleet");
 
+app.MapPatch("/api/vehicles/{id:guid}/contacts", async (Guid id, UpdateVehicleContactsRequest request, FleetDbContext db) =>
+{
+    var vehicle = await db.Vehicles.FirstOrDefaultAsync(v => v.Id == id);
+    if (vehicle is null)
+    {
+        return Results.NotFound();
+    }
+
+    vehicle.DriverName = TrimOrNull(request.DriverName);
+    vehicle.DriverPhone = TrimOrNull(request.DriverPhone);
+    vehicle.SellerName = TrimOrNull(request.SellerName);
+    vehicle.SellerPhone = TrimOrNull(request.SellerPhone);
+    vehicle.OperatorPhone = TrimOrNull(request.OperatorPhone);
+    await db.SaveChangesAsync();
+    return Results.Ok(vehicle);
+})
+.RequireAuthorization(policy => policy.RequireRole(Roles.Operator, Roles.Admin))
+.WithName("UpdateVehicleContacts")
+.WithTags("Fleet");
+
+static string? TrimOrNull(string? value)
+    => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
 app.Run();
 
 public sealed record PositionIngestRequest(
@@ -188,5 +221,11 @@ public sealed record PositionIngestRequest(
 
 public sealed record CreateVehicleRequest(string PlateNumber, string OperatorName);
 public sealed record SetActiveRequest(bool IsActive);
+public sealed record UpdateVehicleContactsRequest(
+    string? DriverName,
+    string? DriverPhone,
+    string? SellerName,
+    string? SellerPhone,
+    string? OperatorPhone);
 
 public partial class Program;

@@ -1,5 +1,4 @@
 @page "/fleet"
-@rendermode InteractiveServer
 @inject AvtomagazinClient Api
 @inject StaffSession Session
 @inject NavigationManager Nav
@@ -28,54 +27,51 @@
 }
 else
 {
-    <table class="table">
-        <thead>
-        <tr>
-            <th>Номер</th>
-            <th>Оператор</th>
-            <th>Статус</th>
-            <th>Последняя точка</th>
-            <th></th>
-        </tr>
-        </thead>
-        <tbody>
-        @foreach (var v in _vehicles)
-        {
-            <tr>
-                <td>@v.PlateNumber</td>
-                <td>@v.OperatorName</td>
-                <td>@(v.IsActive ? "активна" : "выкл")</td>
-                <td>
-                    @if (v.LastLatitude is not null)
-                    {
-                        <span>@v.LastLatitude?.ToString("F4"), @v.LastLongitude?.ToString("F4")</span>
-                        <span class="muted"> @v.LastSeenAtUtc?.ToLocalTime().ToString("HH:mm")</span>
-                    }
-                    else
-                    {
-                        <span class="muted">—</span>
-                    }
-                </td>
-                <td>
-                    <button class="btn btn-ghost" @onclick="() => ToggleAsync(v)">
-                        @(v.IsActive ? "Выключить" : "Включить")
-                    </button>
-                </td>
-            </tr>
-        }
-        </tbody>
-    </table>
+    @foreach (var v in _vehicles)
+    {
+        <section class="panel">
+            <div class="list-row" style="border:0;padding-top:0">
+                <div>
+                    <strong>@v.PlateNumber</strong>
+                    <div class="muted">@v.OperatorName · @(v.IsActive ? "активна" : "выкл")</div>
+                </div>
+                <button class="btn btn-ghost" @onclick="() => ToggleAsync(v)">
+                    @(v.IsActive ? "Выключить" : "Включить")
+                </button>
+            </div>
+
+            <div class="form-grid" style="margin-top:0.75rem">
+                <input value="@Edit(v).DriverName" @onchange="e => Edit(v).DriverName = e.Value?.ToString()" placeholder="Водитель" />
+                <input value="@Edit(v).DriverPhone" @onchange="e => Edit(v).DriverPhone = e.Value?.ToString()" placeholder="Тел. водителя" />
+                <input value="@Edit(v).SellerName" @onchange="e => Edit(v).SellerName = e.Value?.ToString()" placeholder="Продавец" />
+                <input value="@Edit(v).SellerPhone" @onchange="e => Edit(v).SellerPhone = e.Value?.ToString()" placeholder="Тел. продавца" />
+                <input value="@Edit(v).OperatorPhone" @onchange="e => Edit(v).OperatorPhone = e.Value?.ToString()" placeholder="Тел. райпо" />
+                <button type="button" class="btn" @onclick="() => SaveContactsAsync(v)">Сохранить контакты</button>
+            </div>
+        </section>
+    }
 }
 
 @code {
     private bool _loading = true;
     private string? _error;
     private List<VehicleDto> _vehicles = [];
+    private readonly Dictionary<Guid, ContactEdit> _edits = new();
     private string _plate = "";
     private string _operator = "";
 
+    private sealed class ContactEdit
+    {
+        public string? DriverName { get; set; }
+        public string? DriverPhone { get; set; }
+        public string? SellerName { get; set; }
+        public string? SellerPhone { get; set; }
+        public string? OperatorPhone { get; set; }
+    }
+
     protected override async Task OnInitializedAsync()
     {
+        await Session.RestoreAsync();
         if (!Session.IsAuthenticated)
         {
             Nav.NavigateTo("/");
@@ -85,6 +81,24 @@ else
         await ReloadAsync();
     }
 
+    private ContactEdit Edit(VehicleDto v)
+    {
+        if (!_edits.TryGetValue(v.Id, out var edit))
+        {
+            edit = new ContactEdit
+            {
+                DriverName = v.DriverName,
+                DriverPhone = v.DriverPhone,
+                SellerName = v.SellerName,
+                SellerPhone = v.SellerPhone,
+                OperatorPhone = v.OperatorPhone
+            };
+            _edits[v.Id] = edit;
+        }
+
+        return edit;
+    }
+
     private async Task ReloadAsync()
     {
         _loading = true;
@@ -92,6 +106,7 @@ else
         try
         {
             _vehicles = await Api.GetVehiclesAsync();
+            _edits.Clear();
         }
         catch (Exception ex)
         {
@@ -123,6 +138,26 @@ else
         try
         {
             await Api.SetVehicleActiveAsync(v.Id, !v.IsActive);
+            await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    private async Task SaveContactsAsync(VehicleDto v)
+    {
+        var edit = Edit(v);
+        try
+        {
+            await Api.UpdateVehicleContactsAsync(v.Id, new UpdateVehicleContactsRequest(
+                edit.DriverName,
+                edit.DriverPhone,
+                edit.SellerName,
+                edit.SellerPhone,
+                edit.OperatorPhone));
+            _error = null;
             await ReloadAsync();
         }
         catch (Exception ex)

@@ -260,6 +260,43 @@ public sealed class AvtomagazinClient(HttpClient http, IAccessTokenAccessor? tok
     public Task<List<PresenceReportDto>> GetPresenceReportsAsync(CancellationToken ct = default)
         => GetListAsync<PresenceReportDto>("routing/api/presence-reports", ct);
 
+    public Task<List<CaseSummaryDto>> GetCasesAsync(string? status = null, CancellationToken ct = default)
+    {
+        var path = string.IsNullOrWhiteSpace(status)
+            ? "routing/api/cases"
+            : $"routing/api/cases?status={Uri.EscapeDataString(status)}";
+        return GetListAsync<CaseSummaryDto>(path, ct);
+    }
+
+    public async Task<CaseDetailDto?> GetCaseAsync(Guid id, CancellationToken ct = default)
+    {
+        ApplyAuth();
+        return await http.GetFromJsonAsync<CaseDetailDto>($"routing/api/cases/{id}", JsonOptions, ct);
+    }
+
+    public async Task<CaseDetailDto?> AddCaseCommentAsync(Guid id, string body, CancellationToken ct = default)
+    {
+        ApplyAuth();
+        var response = await http.PostAsJsonAsync($"routing/api/cases/{id}/comments", new { body }, ct);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<CaseDetailDto>(JsonOptions, ct);
+    }
+
+    public async Task<CaseDetailDto?> SetCaseStatusAsync(Guid id, string status, string? comment = null, CancellationToken ct = default)
+    {
+        ApplyAuth();
+        var response = await http.PatchAsJsonAsync($"routing/api/cases/{id}/status", new { status, comment }, ct);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<CaseDetailDto>(JsonOptions, ct);
+    }
+
+    public async Task UpdateVehicleContactsAsync(Guid id, UpdateVehicleContactsRequest request, CancellationToken ct = default)
+    {
+        ApplyAuth();
+        var response = await http.PatchAsJsonAsync($"fleet/api/vehicles/{id}/contacts", request, ct);
+        response.EnsureSuccessStatusCode();
+    }
+
     public async Task RegisterDeviceAsync(DeviceRegistrationRequest request, CancellationToken ct = default)
     {
         ApplyAuth();
@@ -325,9 +362,21 @@ public sealed record VehicleDto(
     double? LastLatitude,
     double? LastLongitude,
     DateTimeOffset? LastSeenAtUtc,
-    string? LastSource);
+    string? LastSource,
+    string? DriverName = null,
+    string? DriverPhone = null,
+    string? SellerName = null,
+    string? SellerPhone = null,
+    string? OperatorPhone = null);
 
 public sealed record CreateVehicleRequest(string PlateNumber, string OperatorName);
+
+public sealed record UpdateVehicleContactsRequest(
+    string? DriverName,
+    string? DriverPhone,
+    string? SellerName,
+    string? SellerPhone,
+    string? OperatorPhone);
 
 public sealed record RouteDto(Guid Id, string Name, Guid VehicleId, List<RouteStopDto> Stops);
 
@@ -403,6 +452,42 @@ public sealed record PresenceReportDto(
     string Kind,
     string? DeviceToken,
     DateTimeOffset ReportedAtUtc);
+
+public sealed record CaseSummaryDto(
+    Guid Id,
+    string SettlementKey,
+    string SettlementName,
+    Guid? VehicleId,
+    string Status,
+    int ReportCount,
+    DateTimeOffset OpenedAtUtc,
+    DateTimeOffset UpdatedAtUtc,
+    DateTimeOffset? ClosedAtUtc);
+
+public sealed record CaseDetailDto(
+    Guid Id,
+    string SettlementKey,
+    string SettlementName,
+    Guid? VehicleId,
+    string Status,
+    int ReportCount,
+    DateTimeOffset OpenedAtUtc,
+    DateTimeOffset UpdatedAtUtc,
+    DateTimeOffset? ClosedAtUtc,
+    List<CaseEventDto> Events);
+
+public sealed record CaseEventDto(
+    Guid Id,
+    Guid CaseId,
+    string Kind,
+    string Body,
+    string? AuthorName,
+    string? AuthorEmail,
+    Guid? StopId,
+    string? StopLabel,
+    string? FromStatus,
+    string? ToStatus,
+    DateTimeOffset CreatedAtUtc);
 
 public sealed record SnapshotDto(
     DateTimeOffset? SyncedAtUtc,

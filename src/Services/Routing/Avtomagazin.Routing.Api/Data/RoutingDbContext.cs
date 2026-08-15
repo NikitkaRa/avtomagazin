@@ -9,6 +9,8 @@ public sealed class RoutingDbContext(DbContextOptions<RoutingDbContext> options)
     public DbSet<EtaSnapshot> EtaSnapshots => Set<EtaSnapshot>();
     public DbSet<CoverageVisit> CoverageVisits => Set<CoverageVisit>();
     public DbSet<StopPresenceReport> PresenceReports => Set<StopPresenceReport>();
+    public DbSet<SettlementCase> Cases => Set<SettlementCase>();
+    public DbSet<CaseEvent> CaseEvents => Set<CaseEvent>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -46,6 +48,31 @@ public sealed class RoutingDbContext(DbContextOptions<RoutingDbContext> options)
             e.Property(x => x.Kind).HasMaxLength(32);
             e.Property(x => x.DeviceToken).HasMaxLength(512);
             e.Property(x => x.SettlementName).HasMaxLength(200);
+        });
+
+        modelBuilder.Entity<SettlementCase>(e =>
+        {
+            e.ToTable("Cases");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.SettlementKey).HasMaxLength(120);
+            e.Property(x => x.SettlementName).HasMaxLength(200);
+            e.Property(x => x.Status).HasMaxLength(32);
+            e.HasIndex(x => new { x.SettlementKey, x.Status });
+            e.HasMany(x => x.Events).WithOne().HasForeignKey(x => x.CaseId);
+        });
+
+        modelBuilder.Entity<CaseEvent>(e =>
+        {
+            e.ToTable("CaseEvents");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Kind).HasMaxLength(32);
+            e.Property(x => x.Body).HasMaxLength(2000);
+            e.Property(x => x.AuthorName).HasMaxLength(200);
+            e.Property(x => x.AuthorEmail).HasMaxLength(320);
+            e.Property(x => x.StopLabel).HasMaxLength(200);
+            e.Property(x => x.FromStatus).HasMaxLength(32);
+            e.Property(x => x.ToStatus).HasMaxLength(32);
+            e.HasIndex(x => new { x.CaseId, x.CreatedAtUtc });
         });
     }
 }
@@ -101,6 +128,55 @@ public sealed class StopPresenceReport
     public required string Kind { get; set; }
     public required string DeviceToken { get; set; }
     public DateTimeOffset ReportedAtUtc { get; set; }
+}
+
+public sealed class SettlementCase
+{
+    public Guid Id { get; set; }
+    public required string SettlementKey { get; set; }
+    public required string SettlementName { get; set; }
+    public Guid? VehicleId { get; set; }
+    public required string Status { get; set; }
+    public int ReportCount { get; set; }
+    public DateTimeOffset OpenedAtUtc { get; set; }
+    public DateTimeOffset UpdatedAtUtc { get; set; }
+    public DateTimeOffset? ClosedAtUtc { get; set; }
+    public List<CaseEvent> Events { get; set; } = [];
+}
+
+public sealed class CaseEvent
+{
+    public Guid Id { get; set; }
+    public Guid CaseId { get; set; }
+    public required string Kind { get; set; }
+    public required string Body { get; set; }
+    public string? AuthorName { get; set; }
+    public string? AuthorEmail { get; set; }
+    public Guid? StopId { get; set; }
+    public string? StopLabel { get; set; }
+    public string? FromStatus { get; set; }
+    public string? ToStatus { get; set; }
+    public DateTimeOffset CreatedAtUtc { get; set; }
+}
+
+public static class SettlementNames
+{
+    public static string Key(string? raw)
+    {
+        var name = (raw ?? "").Trim();
+        if (name.Length == 0)
+        {
+            return "unknown";
+        }
+
+        var cut = name.IndexOf(" · ", StringComparison.Ordinal);
+        if (cut < 0)
+        {
+            cut = name.IndexOf(" - ", StringComparison.Ordinal);
+        }
+
+        return cut > 0 ? name[..cut].Trim() : name;
+    }
 }
 
 public static class Seed

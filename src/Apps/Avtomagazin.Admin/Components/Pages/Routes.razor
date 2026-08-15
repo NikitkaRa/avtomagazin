@@ -1,5 +1,4 @@
 @page "/routes"
-@rendermode InteractiveServer
 @inject AvtomagazinClient Api
 @inject StaffSession Session
 @inject NavigationManager Nav
@@ -93,6 +92,7 @@ else
 
     protected override async Task OnInitializedAsync()
     {
+        await Session.RestoreAsync();
         if (!Session.IsAuthenticated)
         {
             Nav.NavigateTo("/");
