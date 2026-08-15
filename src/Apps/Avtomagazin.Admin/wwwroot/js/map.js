@@ -9,6 +9,11 @@ export function init(id, lat, lon, zoom) {
         el._avtoMap = null;
         el._avtoClusters = null;
         el._avtoVans = null;
+        el._avtoRouteLayer = null;
+        el._avtoRouteLine = null;
+        el._avtoRouteMarkers = null;
+        el._avtoClickHandler = null;
+        el._avtoRouteRef = null;
     }
 
     const map = L.map(el, { zoomControl: true, attributionControl: true });
@@ -31,6 +36,7 @@ export function init(id, lat, lon, zoom) {
     }
 
     el._avtoVans = L.layerGroup().addTo(map);
+    el._avtoRouteLayer = L.layerGroup().addTo(map);
     el._avtoFitted = false;
     el._avtoUserMoved = false;
 
@@ -87,4 +93,149 @@ export function setMarkers(id, items) {
         }
         el._avtoFitted = true;
     }
+}
+
+export function enableRouteClicks(id, dotNetRef) {
+    const el = document.getElementById(id);
+    if (!el || !el._avtoMap) {
+        return false;
+    }
+
+    el._avtoRouteRef = dotNetRef;
+
+    if (el._avtoClickHandler) {
+        el._avtoMap.off("click", el._avtoClickHandler);
+    }
+
+    el._avtoClickHandler = (e) => {
+        if (el._avtoDragging) {
+            return;
+        }
+        dotNetRef.invokeMethodAsync("OnMapClick", e.latlng.lat, e.latlng.lng);
+    };
+    el._avtoMap.on("click", el._avtoClickHandler);
+    el._avtoMap.getContainer().style.cursor = "crosshair";
+    return true;
+}
+
+function refreshRouteLine(el) {
+    if (el._avtoRouteLine) {
+        el._avtoMap.removeLayer(el._avtoRouteLine);
+        el._avtoRouteLine = null;
+    }
+
+    const points = (el._avtoRouteMarkers || []).map((m) => m.getLatLng());
+    if (points.length >= 2) {
+        el._avtoRouteLine = L.polyline(points, {
+            color: "#1f7a4d",
+            weight: 3,
+            opacity: 0.85
+        }).addTo(el._avtoMap);
+    }
+}
+
+export function setRouteStops(id, stops, fit) {
+    const el = document.getElementById(id);
+    if (!el || !el._avtoMap || !el._avtoRouteLayer) {
+        return;
+    }
+
+    el._avtoRouteLayer.clearLayers();
+    el._avtoRouteMarkers = [];
+    if (el._avtoRouteLine) {
+        el._avtoMap.removeLayer(el._avtoRouteLine);
+        el._avtoRouteLine = null;
+    }
+
+    const points = [];
+    (stops || []).forEach((stop, index) => {
+        const seq = stop.seq ?? stop.sequence ?? (index + 1);
+        const icon = L.divIcon({
+            // keep leaflet-div-icon — without it DivIcon hit-testing/drag often breaks
+            className: "leaflet-div-icon route-pin",
+            html: `<div class="route-pin-hit"><div class="route-pin-inner">${seq}</div></div>`,
+            iconSize: [44, 44],
+            iconAnchor: [22, 22]
+        });
+        const marker = L.marker([stop.lat, stop.lng], {
+            icon,
+            draggable: true,
+            autoPan: true,
+            autoPanPadding: [40, 40],
+            bubblingMouseEvents: false,
+            interactive: true
+        });
+        marker._stopIndex = index;
+        if (stop.label) {
+            marker.bindTooltip(`${seq}. ${stop.label}`, {
+                direction: "top",
+                offset: [0, -16],
+                sticky: false
+            });
+        }
+
+        marker.on("dragstart", (e) => {
+            el._avtoDragging = true;
+            el._avtoMap.dragging.disable();
+            L.DomEvent.stopPropagation(e);
+            if (marker.getTooltip()) {
+                marker.closeTooltip();
+            }
+        });
+
+        let dragRaf = 0;
+        marker.on("drag", (e) => {
+            refreshRouteLine(el);
+            const ll = e.target.getLatLng();
+            if (!el._avtoRouteRef) {
+                return;
+            }
+            // throttle Blazor updates — flood stalls the drag gesture
+            if (dragRaf) {
+                return;
+            }
+            dragRaf = requestAnimationFrame(() => {
+                dragRaf = 0;
+                const cur = e.target.getLatLng();
+                el._avtoRouteRef.invokeMethodAsync("OnStopDrag", index, cur.lat, cur.lng);
+            });
+        });
+
+        marker.on("dragend", (e) => {
+            const ll = e.target.getLatLng();
+            refreshRouteLine(el);
+            el._avtoMap.dragging.enable();
+            if (el._avtoRouteRef) {
+                el._avtoRouteRef.invokeMethodAsync("OnStopDragEnd", index, ll.lat, ll.lng);
+            }
+            setTimeout(() => { el._avtoDragging = false; }, 250);
+        });
+
+        marker.addTo(el._avtoRouteLayer);
+        el._avtoRouteMarkers.push(marker);
+        points.push(L.latLng(stop.lat, stop.lng));
+    });
+
+    refreshRouteLine(el);
+
+    if (!fit || points.length === 0) {
+        return;
+    }
+
+    const applyFit = () => {
+        el._avtoMap.invalidateSize();
+        if (points.length === 1) {
+            el._avtoMap.setView(points[0], 14);
+            return;
+        }
+
+        el._avtoMap.fitBounds(L.latLngBounds(points), {
+            padding: [48, 48],
+            maxZoom: 14
+        });
+    };
+
+    applyFit();
+    setTimeout(applyFit, 50);
+    setTimeout(applyFit, 250);
 }

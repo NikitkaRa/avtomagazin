@@ -4,56 +4,97 @@
 @implements IDisposable
 
 <div class="app @(Session.IsAuthenticated ? "app-in" : "app-out")">
-    @if (Session.IsAuthenticated && !IsHome)
-    {
-        <header class="topbar">
-            <div>
-                <div class="brand">Автомагазин</div>
-                <div class="who">@Session.Name · @(Session.IsDriver ? "водитель" : Session.IsAdmin ? "админ" : "диспетчер")</div>
-            </div>
-            <button type="button" class="btn btn-ghost" @onclick="Session.SignOut">Выйти</button>
-        </header>
-    }
-    <main class="main">
-        @Body
-    </main>
     @if (Session.IsAuthenticated)
     {
-        <nav class="tabbar">
-            @if (Session.IsDriver)
-            {
-                <NavLink href="/" Match="NavLinkMatch.All">Рейс</NavLink>
-            }
-            else
-            {
-                <NavLink href="/" Match="NavLinkMatch.All">Карта</NavLink>
-                <NavLink href="routes">Маршруты</NavLink>
-                <NavLink href="fleet">Парк</NavLink>
-                <NavLink href="coverage">Визиты</NavLink>
-                <NavLink href="notifications">Пуши</NavLink>
-                @if (Session.IsAdmin)
+        <aside class="sidenav" aria-label="Разделы">
+            <div class="sidenav-head">
+                <span class="sidenav-mark" aria-hidden="true"></span>
+                <div>
+                    <div class="brand">Автомагазин</div>
+                    <div class="sidenav-sub">Персонал</div>
+                </div>
+            </div>
+
+            <nav class="sidenav-nav">
+                @if (Session.IsDriver)
                 {
-                    <NavLink href="users">Люди</NavLink>
+                    <NavLink href="/" Match="NavLinkMatch.All">Рейс</NavLink>
                 }
-            }
-        </nav>
+                else
+                {
+                    <NavLink href="/" Match="NavLinkMatch.All">Карта</NavLink>
+                    <NavLink href="routes">Маршруты</NavLink>
+                    <NavLink href="fleet">Парк</NavLink>
+                    <NavLink href="coverage">Визиты</NavLink>
+                    <NavLink href="notifications">Пуши</NavLink>
+                    @if (Session.IsAdmin)
+                    {
+                        <NavLink href="users">Люди</NavLink>
+                    }
+                }
+            </nav>
+
+            <div class="sidenav-foot">
+                <div class="sidenav-user">
+                    <span class="sidenav-role">@(Session.IsDriver ? "Водитель" : Session.IsAdmin ? "Админ" : "Диспетчер")</span>
+                    <span class="sidenav-name">@Session.Name</span>
+                </div>
+                <button type="button" class="sidenav-exit" @onclick="Session.SignOut">Выйти</button>
+            </div>
+        </aside>
+
+        <div class="workspace">
+            <header class="topbar">
+                <div class="topbar-left">
+                    <span class="topbar-mark" aria-hidden="true"></span>
+                    <div class="topbar-copy">
+                        <div class="brand">Автомагазин</div>
+                        <div class="who">
+                            <span class="topbar-role">@(Session.IsDriver ? "Водитель" : Session.IsAdmin ? "Админ" : "Диспетчер")</span>
+                            <span class="topbar-sep" aria-hidden="true">·</span>
+                            <span>@Session.Name</span>
+                        </div>
+                    </div>
+                </div>
+                <button type="button" class="topbar-exit" @onclick="Session.SignOut">Выйти</button>
+            </header>
+
+            <main class="main">
+                @Body
+            </main>
+
+            <nav class="tabbar" aria-label="Разделы">
+                @if (Session.IsDriver)
+                {
+                    <NavLink href="/" Match="NavLinkMatch.All">Рейс</NavLink>
+                }
+                else
+                {
+                    <NavLink href="/" Match="NavLinkMatch.All">Карта</NavLink>
+                    <NavLink href="routes">Маршруты</NavLink>
+                    <NavLink href="fleet">Парк</NavLink>
+                    <NavLink href="coverage">Визиты</NavLink>
+                    <NavLink href="notifications">Пуши</NavLink>
+                    @if (Session.IsAdmin)
+                    {
+                        <NavLink href="users">Люди</NavLink>
+                    }
+                }
+            </nav>
+        </div>
+    }
+    else
+    {
+        <main class="main">
+            @Body
+        </main>
     }
 </div>
 
 @code {
-    private bool IsHome
-    {
-        get
-        {
-            var path = new Uri(Nav.Uri).AbsolutePath.TrimEnd('/');
-            return path.Length == 0;
-        }
-    }
-
     protected override async Task OnInitializedAsync()
     {
         Session.Changed += OnChanged;
-        Nav.LocationChanged += OnLocationChanged;
         await Session.RestoreAsync();
     }
 
@@ -66,10 +107,5 @@
     }
 
     private void OnChanged() => InvokeAsync(StateHasChanged);
-    private void OnLocationChanged(object? sender, LocationChangedEventArgs e) => InvokeAsync(StateHasChanged);
-    public void Dispose()
-    {
-        Session.Changed -= OnChanged;
-        Nav.LocationChanged -= OnLocationChanged;
-    }
+    public void Dispose() => Session.Changed -= OnChanged;
 }

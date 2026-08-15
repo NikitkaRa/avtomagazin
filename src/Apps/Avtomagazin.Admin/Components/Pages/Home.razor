@@ -6,23 +6,13 @@
 {
     <LoginPanel />
 }
+else if (Session.IsDriver)
+{
+    <DrivePanel />
+}
 else
 {
-    <div class="page-head">
-        <div>
-            <div class="brand">Автомагазин</div>
-            <div class="who">@(Session.IsDriver ? "Водитель" : Session.IsAdmin ? "Админ" : "Диспетчер") · @Session.Name</div>
-        </div>
-        <button type="button" class="btn btn-ghost" @onclick="Session.SignOut">Выйти</button>
-    </div>
-    @if (Session.IsDriver)
-    {
-        <DrivePanel />
-    }
-    else
-    {
-        <DispatchPanel />
-    }
+    <DispatchPanel />
 }
 
 @code {

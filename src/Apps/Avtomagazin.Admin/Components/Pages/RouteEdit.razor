@@ -1,0 +1,422 @@
+@page "/routes/new"
+@page "/routes/{RouteId:guid}"
+@inject AvtomagazinClient Api
+@inject StaffSession Session
+@inject NavigationManager Nav
+@inject IJSRuntime Js
+@implements IAsyncDisposable
+
+<PageTitle>@(IsNew ? "Новый маршрут" : "Редактор маршрута")</PageTitle>
+
+<div class="page-head">
+    <div>
+        <div class="brand">@(IsNew ? "Новый маршрут" : "Редактор")</div>
+        <div class="who">Клик — новая точка. Перетащите номер, чтобы сдвинуть. Сохраните кнопкой.</div>
+    </div>
+    <a class="btn btn-ghost" href="routes">К списку</a>
+</div>
+
+@if (!string.IsNullOrEmpty(_error))
+{
+    <div class="alert">@_error</div>
+}
+@if (!string.IsNullOrEmpty(_ok))
+{
+    <div class="panel ok">@_ok</div>
+}
+
+<section class="panel route-editor-meta">
+    <div class="form-grid">
+        <input @bind="_name" placeholder="Название маршрута" />
+        <select @bind="_vehicleId">
+            <option value="@Guid.Empty">— автолавка —</option>
+            @foreach (var v in _vehicles)
+            {
+                <option value="@v.Id">@v.PlateNumber · @v.OperatorName</option>
+            }
+        </select>
+        <input @bind="_region" placeholder="Регион по умолчанию (BY-MI)" />
+    </div>
+</section>
+
+<div class="map map-route" id="route-editor-map"></div>
+<p class="tiny muted">Клик по пустому месту — новая точка. Перетащите номер, чтобы сдвинуть остановку. Сохранение — кнопкой ниже.</p>
+
+<section class="block">
+    <header class="block-head">
+        <h2>Остановки</h2>
+        <span class="block-meta">@_stops.Count</span>
+    </header>
+    @if (_stops.Count == 0)
+    {
+        <p class="empty">Пока пусто — кликните по карте.</p>
+    }
+    else
+    {
+        <ul class="feed">
+            @for (var i = 0; i < _stops.Count; i++)
+            {
+                var idx = i;
+                var stop = _stops[i];
+                <li class="feed-row route-stop-row">
+                    <div class="route-stop-main">
+                        <span class="route-seq">@(idx + 1)</span>
+                        <input value="@stop.Name" @onchange="e => RenameStop(idx, e.Value?.ToString())" placeholder="Название пункта" />
+                    </div>
+                    <div class="feed-side route-stop-actions">
+                        <span class="tiny muted">@stop.Lat.ToString("F4"), @stop.Lng.ToString("F4")</span>
+                        <button type="button" class="btn btn-ghost" disabled="@(idx == 0)" @onclick="() => MoveUp(idx)">↑</button>
+                        <button type="button" class="btn btn-ghost" disabled="@(idx == _stops.Count - 1)" @onclick="() => MoveDown(idx)">↓</button>
+                        <button type="button" class="btn btn-ghost" @onclick="() => RemoveStop(idx)">Удалить</button>
+                    </div>
+                </li>
+            }
+        </ul>
+    }
+</section>
+
+<div class="row" style="margin: 1rem 0 1.5rem;">
+    <button type="button" class="btn" disabled="@_busy" @onclick="SaveAsync">@(IsNew ? "Создать маршрут" : "Сохранить")</button>
+    @if (!IsNew)
+    {
+        <button type="button" class="btn btn-ghost" disabled="@_busy" @onclick="ReloadAsync">Сбросить</button>
+    }
+</div>
+
+@code {
+    [Parameter] public Guid? RouteId { get; set; }
+
+    private bool IsNew => RouteId is null || RouteId == Guid.Empty;
+
+    private readonly List<DraftStop> _stops = [];
+    private List<VehicleDto> _vehicles = [];
+    private string _name = "";
+    private Guid _vehicleId;
+    private string _region = "BY-MI";
+    private string? _error;
+    private string? _ok;
+    private bool _busy;
+    private bool _mapReady;
+    private IJSObjectReference? _map;
+    private DotNetObjectReference<RouteEdit>? _self;
+
+    private sealed class DraftStop
+    {
+        public Guid? Id { get; set; }
+        public string Name { get; set; } = "";
+        public double Lat { get; set; }
+        public double Lng { get; set; }
+        public DateTimeOffset? PlannedArrivalUtc { get; set; }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Session.RestoreAsync();
+        if (!Session.IsAuthenticated)
+        {
+            Nav.NavigateTo("/");
+            return;
+        }
+
+        _vehicles = await Api.GetVehiclesAsync();
+        if (!IsNew)
+        {
+            await LoadRouteAsync();
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _mapReady)
+        {
+            return;
+        }
+
+        try
+        {
+            _self = DotNetObjectReference.Create(this);
+            _map = await Js.InvokeAsync<IJSObjectReference>("import", "./js/map.js");
+
+            double startLat = 53.55;
+            double startLng = 26.4;
+            var zoom = 7;
+            if (_stops.Count > 0)
+            {
+                startLat = _stops.Average(s => s.Lat);
+                startLng = _stops.Average(s => s.Lng);
+                zoom = _stops.Count == 1 ? 14 : 11;
+            }
+
+            await _map.InvokeAsync<bool>("init", "route-editor-map", startLat, startLng, zoom);
+            await _map.InvokeAsync<bool>("enableRouteClicks", "route-editor-map", _self);
+            _mapReady = true;
+
+            if (_stops.Count > 0)
+            {
+                await DrawRouteAsync(fit: true);
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = $"Карта: {ex.Message}";
+        }
+    }
+
+    private async Task LoadRouteAsync()
+    {
+        if (RouteId is not Guid id)
+        {
+            return;
+        }
+
+        try
+        {
+            var route = await Api.GetRouteAsync(id);
+            if (route is null)
+            {
+                _error = "Маршрут не найден";
+                return;
+            }
+
+            _name = route.Name;
+            _vehicleId = route.VehicleId;
+            _stops.Clear();
+            foreach (var s in (route.Stops ?? []).OrderBy(x => x.Sequence))
+            {
+                _stops.Add(new DraftStop
+                {
+                    Id = s.Id,
+                    Name = s.SettlementName,
+                    Lat = s.Latitude,
+                    Lng = s.Longitude,
+                    PlannedArrivalUtc = s.PlannedArrivalUtc
+                });
+                if (!string.IsNullOrWhiteSpace(s.RegionCode))
+                {
+                    _region = s.RegionCode;
+                }
+            }
+
+            _error = null;
+            if (_mapReady)
+            {
+                await DrawRouteAsync(fit: true);
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    private async Task ReloadAsync()
+    {
+        _ok = null;
+        await LoadRouteAsync();
+        await DrawRouteAsync(fit: true);
+    }
+
+    [JSInvokable]
+    public async Task OnMapClick(double lat, double lng)
+    {
+        _stops.Add(new DraftStop
+        {
+            Name = $"Точка {_stops.Count + 1}",
+            Lat = lat,
+            Lng = lng,
+            PlannedArrivalUtc = DateTimeOffset.UtcNow.AddMinutes(20 * (_stops.Count + 1))
+        });
+        _ok = null;
+        await DrawRouteAsync(fit: false);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
+    public Task OnStopDrag(int index, double lat, double lng)
+    {
+        if (index < 0 || index >= _stops.Count)
+        {
+            return Task.CompletedTask;
+        }
+
+        _stops[index].Lat = lat;
+        _stops[index].Lng = lng;
+        return InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
+    public Task OnStopDragEnd(int index, double lat, double lng)
+    {
+        if (index < 0 || index >= _stops.Count)
+        {
+            return Task.CompletedTask;
+        }
+
+        _stops[index].Lat = lat;
+        _stops[index].Lng = lng;
+        _ok = null;
+        return InvokeAsync(StateHasChanged);
+    }
+
+    private async Task RenameStop(int index, string? name)
+    {
+        if (index < 0 || index >= _stops.Count)
+        {
+            return;
+        }
+
+        _stops[index].Name = string.IsNullOrWhiteSpace(name) ? _stops[index].Name : name.Trim();
+        await DrawRouteAsync(fit: false);
+    }
+
+    private async Task RemoveStop(int index)
+    {
+        if (index < 0 || index >= _stops.Count)
+        {
+            return;
+        }
+
+        _stops.RemoveAt(index);
+        await DrawRouteAsync(fit: false);
+    }
+
+    private async Task MoveUp(int index)
+    {
+        if (index <= 0 || index >= _stops.Count)
+        {
+            return;
+        }
+
+        (_stops[index - 1], _stops[index]) = (_stops[index], _stops[index - 1]);
+        await DrawRouteAsync(fit: false);
+    }
+
+    private async Task MoveDown(int index)
+    {
+        if (index < 0 || index >= _stops.Count - 1)
+        {
+            return;
+        }
+
+        (_stops[index + 1], _stops[index]) = (_stops[index], _stops[index + 1]);
+        await DrawRouteAsync(fit: false);
+    }
+
+    private async Task DrawRouteAsync(bool fit)
+    {
+        if (_map is null)
+        {
+            return;
+        }
+
+        var payload = _stops.Select((s, i) => new
+        {
+            lat = s.Lat,
+            lng = s.Lng,
+            seq = i + 1,
+            label = s.Name
+        }).ToArray();
+
+        await _map.InvokeVoidAsync("setRouteStops", "route-editor-map", payload, fit);
+    }
+
+    private async Task SaveAsync()
+    {
+        _error = null;
+        _ok = null;
+
+        if (string.IsNullOrWhiteSpace(_name) || _vehicleId == Guid.Empty)
+        {
+            _error = "Укажите название и автолавку";
+            return;
+        }
+
+        if (_stops.Count == 0)
+        {
+            _error = "Добавьте хотя бы одну остановку на карте";
+            return;
+        }
+
+        if (_busy)
+        {
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            Guid routeId;
+            if (IsNew)
+            {
+                var created = await Api.CreateRouteAsync(new CreateRouteRequest(_name.Trim(), _vehicleId));
+                if (created is null)
+                {
+                    _error = "Не удалось создать маршрут";
+                    return;
+                }
+
+                routeId = created.Id;
+            }
+            else
+            {
+                routeId = RouteId!.Value;
+                await Api.UpdateRouteAsync(routeId, new UpdateRouteRequest(_name.Trim(), _vehicleId));
+            }
+
+            var region = string.IsNullOrWhiteSpace(_region) ? "BY-MI" : _region.Trim();
+            var now = DateTimeOffset.UtcNow;
+            var items = _stops.Select((s, i) => new ReplaceStopItem(
+                s.Id,
+                i + 1,
+                string.IsNullOrWhiteSpace(s.Name) ? $"Точка {i + 1}" : s.Name,
+                region,
+                s.Lat,
+                s.Lng,
+                s.PlannedArrivalUtc ?? now.AddMinutes(20 * (i + 1)))).ToList();
+
+            var saved = await Api.ReplaceRouteStopsAsync(routeId, items);
+            if (saved is not null)
+            {
+                _stops.Clear();
+                foreach (var s in (saved.Stops ?? []).OrderBy(x => x.Sequence))
+                {
+                    _stops.Add(new DraftStop
+                    {
+                        Id = s.Id,
+                        Name = s.SettlementName,
+                        Lat = s.Latitude,
+                        Lng = s.Longitude,
+                        PlannedArrivalUtc = s.PlannedArrivalUtc
+                    });
+                }
+            }
+
+            if (IsNew)
+            {
+                Nav.NavigateTo($"routes/{routeId}");
+                return;
+            }
+
+            await DrawRouteAsync(fit: false);
+            _ok = "Сохранено";
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _self?.Dispose();
+        if (_map is not null)
+        {
+            await _map.DisposeAsync();
+        }
+    }
+}

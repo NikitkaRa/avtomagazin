@@ -5,76 +5,54 @@
 
 <PageTitle>Маршруты</PageTitle>
 
-<h1>Маршруты и остановки</h1>
+<div class="page-head">
+    <div>
+        <div class="brand">Маршруты</div>
+        <div class="who">Краткий список. Создание и правки — на отдельных экранах.</div>
+    </div>
+    <a class="btn" href="routes/new">Новый маршрут</a>
+</div>
 
 @if (!string.IsNullOrEmpty(_error))
 {
     <div class="alert">@_error</div>
 }
 
-<section class="panel">
-    <h2>Новый маршрут</h2>
-    <div class="form-grid">
-        <input @bind="_routeName" placeholder="Название маршрута" />
-        <select @bind="_routeVehicleId">
-            <option value="@Guid.Empty">— автолавка —</option>
-            @foreach (var v in _vehicles)
-            {
-                <option value="@v.Id">@v.PlateNumber · @v.OperatorName</option>
-            }
-        </select>
-        <button class="btn" @onclick="CreateRouteAsync">Создать</button>
-    </div>
-</section>
-
 @if (_loading)
 {
-    <p>Загрузка…</p>
+    <p class="muted">Загрузка…</p>
+}
+else if (_routes.Count == 0)
+{
+    <p class="empty">Маршрутов пока нет. Создайте первый.</p>
 }
 else
 {
-    @foreach (var route in _routes)
-    {
-        <section class="panel">
-            <h2>@route.Name</h2>
-            <p class="muted">@PlateFor(route.VehicleId)</p>
-            <table class="table">
-                <thead>
-                <tr>
-                    <th>#</th>
-                    <th>Пункт</th>
-                    <th>Регион</th>
-                    <th>План UTC</th>
-                    <th></th>
-                </tr>
-                </thead>
-                <tbody>
-                @foreach (var s in route.Stops.OrderBy(x => x.Sequence))
-                {
-                    <tr>
-                        <td>@s.Sequence</td>
-                        <td>@s.SettlementName</td>
-                        <td>@s.RegionCode</td>
-                        <td>@s.PlannedArrivalUtc.ToString("dd.MM HH:mm")</td>
-                        <td>
-                            <button class="btn btn-ghost" @onclick="() => DelayAsync(route.Id, s)">+30 мин</button>
-                        </td>
-                    </tr>
-                }
-                </tbody>
-            </table>
-
-            <h3>Добавить остановку</h3>
-            <div class="form-grid">
-                <input type="number" @bind="_stopSeq" placeholder="Порядок" />
-                <input @bind="_stopName" placeholder="Деревня" />
-                <input @bind="_stopRegion" placeholder="Регион (BY-HR)" />
-                <input type="number" step="0.0001" @bind="_stopLat" placeholder="Lat" />
-                <input type="number" step="0.0001" @bind="_stopLon" placeholder="Lon" />
-                <button class="btn" @onclick="() => AddStopAsync(route.Id)">Добавить</button>
-            </div>
-        </section>
-    }
+    <ul class="feed">
+        @foreach (var route in _routes)
+        {
+            var stops = (route.Stops ?? []).OrderBy(s => s.Sequence).ToList();
+            <li class="feed-row">
+                <div>
+                    <strong>@route.Name</strong>
+                    <span class="feed-sub">
+                        @PlateFor(route.VehicleId) · @stops.Count ост.
+                        @if (stops.Count > 0)
+                        {
+                            <text> · @stops.First().SettlementName</text>
+                            @if (stops.Count > 1)
+                            {
+                                <text> → @stops.Last().SettlementName</text>
+                            }
+                        }
+                    </span>
+                </div>
+                <div class="feed-side">
+                    <a class="btn btn-ghost" href="@($"routes/{route.Id}")">Открыть</a>
+                </div>
+            </li>
+        }
+    </ul>
 }
 
 @code {
@@ -82,13 +60,6 @@ else
     private string? _error;
     private List<RouteDto> _routes = [];
     private List<VehicleDto> _vehicles = [];
-    private string _routeName = "";
-    private Guid _routeVehicleId;
-    private int _stopSeq = 1;
-    private string _stopName = "";
-    private string _stopRegion = "BY-HR";
-    private double _stopLat = 53.5;
-    private double _stopLon = 24.0;
 
     protected override async Task OnInitializedAsync()
     {
@@ -109,6 +80,7 @@ else
         {
             _vehicles = await Api.GetVehiclesAsync();
             _routes = await Api.GetRoutesAsync();
+            _error = null;
         }
         catch (Exception ex)
         {
@@ -120,67 +92,9 @@ else
         }
     }
 
-    private async Task CreateRouteAsync()
-    {
-        if (_routeVehicleId == Guid.Empty || string.IsNullOrWhiteSpace(_routeName))
-        {
-            _error = "Укажи название и автолавку";
-            return;
-        }
-
-        try
-        {
-            await Api.CreateRouteAsync(new CreateRouteRequest(_routeName, _routeVehicleId));
-            _routeName = "";
-            await ReloadAsync();
-        }
-        catch (Exception ex)
-        {
-            _error = ex.Message;
-        }
-    }
-
-    private async Task AddStopAsync(Guid routeId)
-    {
-        try
-        {
-            await Api.AddStopAsync(routeId, new CreateStopRequest(
-                _stopSeq,
-                _stopName,
-                _stopRegion,
-                _stopLat,
-                _stopLon,
-                DateTimeOffset.UtcNow.AddHours(2)));
-            _stopName = "";
-            _stopSeq++;
-            await ReloadAsync();
-        }
-        catch (Exception ex)
-        {
-            _error = ex.Message;
-        }
-    }
-
-    private async Task DelayAsync(Guid routeId, RouteStopDto stop)
-    {
-        try
-        {
-            await Api.ChangeScheduleAsync(new ChangeScheduleRequest(
-                routeId,
-                stop.Id,
-                stop.PlannedArrivalUtc.AddMinutes(30),
-                "Задержка диспетчера (+30 мин)"));
-            await ReloadAsync();
-        }
-        catch (Exception ex)
-        {
-            _error = ex.Message;
-        }
-    }
-
     private string PlateFor(Guid vehicleId)
     {
         var van = _vehicles.FirstOrDefault(v => v.Id == vehicleId);
-        return van is null ? "автолавка не назначена" : $"{van.PlateNumber} · {van.OperatorName}";
+        return van is null ? "без автолавки" : van.PlateNumber;
     }
 }

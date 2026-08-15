@@ -94,6 +94,16 @@ app.MapGet("/api/routes", async (RoutingDbContext db) =>
     .WithName("ListRoutes")
     .WithTags("Routing");
 
+app.MapGet("/api/routes/{routeId:guid}", async (Guid routeId, RoutingDbContext db) =>
+{
+    var route = await db.Routes.AsNoTracking()
+        .Include(r => r.Stops.OrderBy(s => s.Sequence))
+        .FirstOrDefaultAsync(r => r.Id == routeId);
+    return route is null ? Results.NotFound() : Results.Ok(route);
+})
+.WithName("GetRoute")
+.WithTags("Routing");
+
 app.MapGet("/api/stops/{settlement}", async (string settlement, RoutingDbContext db) =>
 {
     var stops = await db.Stops.AsNoTracking()
@@ -141,10 +151,88 @@ app.MapPost("/api/routes", async (CreateRouteRequest request, RoutingDbContext d
 
     db.Routes.Add(route);
     await db.SaveChangesAsync();
-    return Results.Created($"/api/routes/{route.Id}", route);
+    return Results.Created($"/api/routes/{route.Id}", new
+    {
+        route.Id,
+        route.Name,
+        route.VehicleId,
+        Stops = Array.Empty<object>()
+    });
 })
 .RequireAuthorization(policy => policy.RequireRole(Roles.Operator, Roles.Admin))
 .WithName("CreateRoute")
+.WithTags("Routing");
+
+app.MapPatch("/api/routes/{routeId:guid}", async (Guid routeId, UpdateRouteRequest request, RoutingDbContext db) =>
+{
+    var route = await db.Routes.Include(r => r.Stops).FirstOrDefaultAsync(r => r.Id == routeId);
+    if (route is null)
+    {
+        return Results.NotFound();
+    }
+
+    if (!string.IsNullOrWhiteSpace(request.Name))
+    {
+        route.Name = request.Name.Trim();
+    }
+
+    if (request.VehicleId is Guid vehicleId && vehicleId != Guid.Empty)
+    {
+        route.VehicleId = vehicleId;
+    }
+
+    await db.SaveChangesAsync();
+    return Results.Ok(await db.Routes.AsNoTracking()
+        .Include(r => r.Stops.OrderBy(s => s.Sequence))
+        .FirstAsync(r => r.Id == routeId));
+})
+.RequireAuthorization(policy => policy.RequireRole(Roles.Operator, Roles.Admin))
+.WithName("UpdateRoute")
+.WithTags("Routing");
+
+app.MapPut("/api/routes/{routeId:guid}/stops", async (
+    Guid routeId,
+    ReplaceStopsRequest request,
+    RoutingDbContext db) =>
+{
+    if (!await db.Routes.AnyAsync(r => r.Id == routeId))
+    {
+        return Results.NotFound();
+    }
+
+    // Bulk delete avoids EF RemoveRange+Clear generating DELETE+UPDATE on the same rows
+    await db.Stops.Where(s => s.RouteId == routeId).ExecuteDeleteAsync();
+
+    var incoming = request.Stops ?? [];
+    var now = DateTimeOffset.UtcNow;
+    var seq = 1;
+    foreach (var item in incoming.OrderBy(s => s.Sequence <= 0 ? int.MaxValue : s.Sequence))
+    {
+        if (string.IsNullOrWhiteSpace(item.SettlementName))
+        {
+            continue;
+        }
+
+        db.Stops.Add(new RouteStop
+        {
+            Id = Guid.NewGuid(),
+            RouteId = routeId,
+            Sequence = seq++,
+            SettlementName = item.SettlementName.Trim(),
+            RegionCode = string.IsNullOrWhiteSpace(item.RegionCode) ? "BY-MI" : item.RegionCode.Trim(),
+            Latitude = item.Latitude,
+            Longitude = item.Longitude,
+            PlannedArrivalUtc = (item.PlannedArrivalUtc ?? now.AddMinutes(15 * seq)).ToUniversalTime()
+        });
+    }
+
+    await db.SaveChangesAsync();
+    return Results.Ok(await db.Routes.AsNoTracking()
+        .Include(r => r.Stops.OrderBy(s => s.Sequence))
+        .FirstAsync(r => r.Id == routeId));
+})
+.RequireAuthorization(policy => policy.RequireRole(Roles.Operator, Roles.Admin))
+.WithName("ReplaceRouteStops")
 .WithTags("Routing");
 
 app.MapPost("/api/routes/{routeId:guid}/stops", async (
@@ -176,6 +264,22 @@ app.MapPost("/api/routes/{routeId:guid}/stops", async (
 })
 .RequireAuthorization(policy => policy.RequireRole(Roles.Operator, Roles.Admin))
 .WithName("AddStop")
+.WithTags("Routing");
+
+app.MapDelete("/api/stops/{stopId:guid}", async (Guid stopId, RoutingDbContext db) =>
+{
+    var stop = await db.Stops.FirstOrDefaultAsync(s => s.Id == stopId);
+    if (stop is null)
+    {
+        return Results.NotFound();
+    }
+
+    db.Stops.Remove(stop);
+    await db.SaveChangesAsync();
+    return Results.NoContent();
+})
+.RequireAuthorization(policy => policy.RequireRole(Roles.Operator, Roles.Admin))
+.WithName("DeleteStop")
 .WithTags("Routing");
 
 app.MapPost("/api/schedule/change", async (
@@ -551,6 +655,19 @@ public sealed record CoverageVisitRequest(
     bool WithinScheduledWindow);
 
 public sealed record CreateRouteRequest(string Name, Guid VehicleId);
+
+public sealed record UpdateRouteRequest(string? Name, Guid? VehicleId);
+
+public sealed record ReplaceStopsRequest(List<ReplaceStopItem>? Stops);
+
+public sealed record ReplaceStopItem(
+    Guid? Id,
+    int Sequence,
+    string SettlementName,
+    string? RegionCode,
+    double Latitude,
+    double Longitude,
+    DateTimeOffset? PlannedArrivalUtc);
 
 public sealed record CreateStopRequest(
     int Sequence,

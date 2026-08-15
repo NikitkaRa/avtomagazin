@@ -166,10 +166,24 @@ public sealed class AvtomagazinClient(HttpClient http, IAccessTokenAccessor? tok
     public Task<List<RouteDto>> GetRoutesAsync(CancellationToken ct = default)
         => GetListAsync<RouteDto>("routing/api/routes", ct);
 
+    public async Task<RouteDto?> GetRouteAsync(Guid routeId, CancellationToken ct = default)
+    {
+        ApplyAuth();
+        return await http.GetFromJsonAsync<RouteDto>($"routing/api/routes/{routeId}", JsonOptions, ct);
+    }
+
     public async Task<RouteDto?> CreateRouteAsync(CreateRouteRequest request, CancellationToken ct = default)
     {
         ApplyAuth();
         var response = await http.PostAsJsonAsync("routing/api/routes", request, ct);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<RouteDto>(JsonOptions, ct);
+    }
+
+    public async Task<RouteDto?> UpdateRouteAsync(Guid routeId, UpdateRouteRequest request, CancellationToken ct = default)
+    {
+        ApplyAuth();
+        var response = await http.PatchAsJsonAsync($"routing/api/routes/{routeId}", request, ct);
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadFromJsonAsync<RouteDto>(JsonOptions, ct);
     }
@@ -179,6 +193,27 @@ public sealed class AvtomagazinClient(HttpClient http, IAccessTokenAccessor? tok
         ApplyAuth();
         var response = await http.PostAsJsonAsync($"routing/api/routes/{routeId}/stops", request, ct);
         response.EnsureSuccessStatusCode();
+    }
+
+    public async Task<RouteDto?> ReplaceRouteStopsAsync(Guid routeId, IEnumerable<ReplaceStopItem> stops, CancellationToken ct = default)
+    {
+        ApplyAuth();
+        var response = await http.PutAsJsonAsync(
+            $"routing/api/routes/{routeId}/stops",
+            new ReplaceStopsRequest(stops.ToList()),
+            ct);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<RouteDto>(JsonOptions, ct);
+    }
+
+    public async Task DeleteStopAsync(Guid stopId, CancellationToken ct = default)
+    {
+        ApplyAuth();
+        var response = await http.DeleteAsync($"routing/api/stops/{stopId}", ct);
+        if (response.StatusCode != System.Net.HttpStatusCode.NotFound)
+        {
+            response.EnsureSuccessStatusCode();
+        }
     }
 
     public async Task ChangeScheduleAsync(ChangeScheduleRequest request, CancellationToken ct = default)
@@ -378,7 +413,7 @@ public sealed record UpdateVehicleContactsRequest(
     string? SellerPhone,
     string? OperatorPhone);
 
-public sealed record RouteDto(Guid Id, string Name, Guid VehicleId, List<RouteStopDto> Stops);
+public sealed record RouteDto(Guid Id, string Name, Guid VehicleId, List<RouteStopDto>? Stops);
 
 public sealed record RouteStopDto(
     Guid Id,
@@ -391,6 +426,19 @@ public sealed record RouteStopDto(
     DateTimeOffset PlannedArrivalUtc);
 
 public sealed record CreateRouteRequest(string Name, Guid VehicleId);
+
+public sealed record UpdateRouteRequest(string? Name, Guid? VehicleId);
+
+public sealed record ReplaceStopsRequest(List<ReplaceStopItem> Stops);
+
+public sealed record ReplaceStopItem(
+    Guid? Id,
+    int Sequence,
+    string SettlementName,
+    string? RegionCode,
+    double Latitude,
+    double Longitude,
+    DateTimeOffset? PlannedArrivalUtc);
 
 public sealed record CreateStopRequest(
     int Sequence,
