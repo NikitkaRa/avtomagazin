@@ -1,7 +1,11 @@
 using System.Text;
+using System.Threading.RateLimiting;
 using MassTransit;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.IdentityModel.Tokens;
@@ -14,12 +18,31 @@ public static class ServiceCollectionExtensions
         this IHostApplicationBuilder builder,
         Action<IBusRegistrationConfigurator>? configureBus = null)
     {
+        builder.AddAvtomagazinObservability();
         builder.Services.AddOpenApi();
-        builder.Services.AddHealthChecks();
+        builder.Services.AddMemoryCache();
 
-        var jwtKey = builder.Configuration["Jwt:Key"]
-                     ?? "dev-only-change-me-avtomagazin-super-secret-key-32b";
+        var jwtKey = DeploySecrets.JwtKey(builder.Configuration, builder.Environment);
         var signingKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey));
+        var identityBase = builder.Configuration["Internal:IdentityBaseUrl"];
+
+        if (!string.IsNullOrWhiteSpace(identityBase))
+        {
+            if (DeploySecrets.IsPublic(builder.Environment) && string.IsNullOrWhiteSpace(builder.Configuration["Internal:Key"]))
+            {
+                throw new InvalidOperationException("Internal:Key is required when IdentityBaseUrl is set.");
+            }
+
+            builder.Services.AddHttpClient<ISessionGuard, HttpSessionGuard>(client =>
+            {
+                client.BaseAddress = new Uri(identityBase.TrimEnd('/') + "/");
+                client.Timeout = TimeSpan.FromSeconds(2);
+            });
+        }
+        else
+        {
+            builder.Services.AddSingleton<ISessionGuard, NoopSessionGuard>();
+        }
 
         builder.Services
             .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
@@ -37,7 +60,53 @@ public static class ServiceCollectionExtensions
                 };
             });
 
+        builder.Services.PostConfigure<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme, options =>
+        {
+            var previous = options.Events?.OnTokenValidated;
+            options.Events ??= new JwtBearerEvents();
+            options.Events.OnTokenValidated = async context =>
+            {
+                if (previous is not null)
+                {
+                    await previous(context);
+                }
+
+                if (context.Principal is null)
+                {
+                    context.Fail("missing_principal");
+                    return;
+                }
+
+                var guard = context.HttpContext.RequestServices.GetRequiredService<ISessionGuard>();
+                if (!await guard.ValidateAsync(context.Principal, context.HttpContext.RequestAborted))
+                {
+                    context.Fail("session_revoked");
+                }
+            };
+        });
+
         builder.Services.AddAuthorization();
+        builder.Services.AddRateLimiter(options =>
+        {
+            options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+            var testing = builder.Environment.IsEnvironment("Testing");
+            options.AddPolicy("auth", httpContext =>
+                RateLimitPartition.GetFixedWindowLimiter(
+                    httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+                    _ => new FixedWindowRateLimiterOptions
+                    {
+                        Window = TimeSpan.FromMinutes(1),
+                        PermitLimit = testing ? 10_000 : 20,
+                        QueueLimit = 0
+                    }));
+        });
+
+        builder.Services.Configure<ForwardedHeadersOptions>(options =>
+        {
+            options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+            options.KnownIPNetworks.Clear();
+            options.KnownProxies.Clear();
+        });
 
         var useInMemory =
             builder.Environment.IsEnvironment("Testing")
@@ -46,6 +115,17 @@ public static class ServiceCollectionExtensions
         var rabbitHost = builder.Configuration["RabbitMq:Host"] ?? "localhost";
         var rabbitUser = builder.Configuration["RabbitMq:Username"] ?? "guest";
         var rabbitPass = builder.Configuration["RabbitMq:Password"] ?? "guest";
+
+        if (DeploySecrets.IsPublic(builder.Environment)
+            && (string.Equals(rabbitPass, "guest", StringComparison.Ordinal) || string.IsNullOrWhiteSpace(rabbitPass)))
+        {
+            throw new InvalidOperationException("RabbitMq:Password is required in Staging/Production.");
+        }
+
+        if (!useInMemory)
+        {
+            builder.AddAvtomagazinRabbitHealth(rabbitHost, rabbitUser, rabbitPass);
+        }
 
         builder.Services.AddMassTransit(x =>
         {
@@ -74,12 +154,22 @@ public static class ServiceCollectionExtensions
 
     public static WebApplication UseAvtomagazinDefaults(this WebApplication app)
     {
+        app.UseForwardedHeaders();
+        app.Use(async (context, next) =>
+        {
+            context.Response.Headers.XContentTypeOptions = "nosniff";
+            context.Response.Headers["X-Frame-Options"] = "DENY";
+            context.Response.Headers["Referrer-Policy"] = "no-referrer";
+            await next();
+        });
+        app.UseAvtomagazinObservability();
+
         if (app.Environment.IsDevelopment())
         {
             app.MapOpenApi();
         }
 
-        app.MapHealthChecks("/health");
+        app.UseRateLimiter();
         app.UseAuthentication();
         app.UseAuthorization();
         return app;

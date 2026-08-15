@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Avtomagazin.Contracts;
 using Avtomagazin.Contracts.Events;
 using Avtomagazin.Fleet.Api.Data;
@@ -9,12 +10,35 @@ using Microsoft.EntityFrameworkCore;
 var builder = WebApplication.CreateBuilder(args);
 builder.AddAvtomagazinDefaults();
 
-builder.Services.AddDbContext<FleetDbContext>(options =>
-    options.UseNpgsql(builder.Configuration.GetConnectionString("Fleet")
-                      ?? "Host=localhost;Port=5432;Database=avtomagazin_fleet;Username=avtomagazin;Password=avtomagazin"));
+var fleetCs = DeploySecrets.ConnectionString(
+    builder.Configuration,
+    builder.Environment,
+    "Fleet",
+    "Host=localhost;Port=5432;Database=avtomagazin_fleet;Username=avtomagazin;Password=avtomagazin");
 
-builder.Services.AddSingleton<IGpsProvider, MockGpsProvider>();
-builder.Services.AddHostedService<GpsPollingWorker>();
+builder.Services.AddDbContext<FleetDbContext>(options =>
+{
+    if (builder.Environment.IsEnvironment("Testing"))
+    {
+        options.UseInMemoryDatabase("avtomagazin-fleet-tests");
+        return;
+    }
+
+    options.UseNpgsql(fleetCs);
+});
+
+if (!builder.Environment.IsEnvironment("Testing"))
+{
+    builder.AddAvtomagazinPostgresHealth("postgres", fleetCs);
+}
+
+var gpsProvider = builder.Configuration["Gps:Provider"]
+                  ?? (builder.Environment.IsDevelopment() ? "Mock" : "None");
+if (string.Equals(gpsProvider, "Mock", StringComparison.OrdinalIgnoreCase))
+{
+    builder.Services.AddSingleton<IGpsProvider, MockGpsProvider>();
+    builder.Services.AddHostedService<GpsPollingWorker>();
+}
 
 var app = builder.Build();
 app.UseAvtomagazinDefaults();
@@ -81,7 +105,7 @@ app.MapPost("/api/vehicles", async (CreateVehicleRequest request, FleetDbContext
     await db.SaveChangesAsync();
     return Results.Created($"/api/vehicles/{vehicle.Id}", vehicle);
 })
-.RequireAuthorization(policy => policy.RequireRole(Roles.Driver, Roles.Operator, Roles.Admin))
+.RequireAuthorization(policy => policy.RequireRole(Roles.Operator, Roles.Admin))
 .WithName("CreateVehicle")
 .WithTags("Fleet");
 
@@ -97,16 +121,22 @@ app.MapPatch("/api/vehicles/{id:guid}/active", async (Guid id, SetActiveRequest 
     await db.SaveChangesAsync();
     return Results.Ok(vehicle);
 })
-.RequireAuthorization(policy => policy.RequireRole(Roles.Driver, Roles.Operator, Roles.Admin))
+.RequireAuthorization(policy => policy.RequireRole(Roles.Operator, Roles.Admin))
 .WithName("SetVehicleActive")
 .WithTags("Fleet");
 
 app.MapPost("/api/vehicles/{id:guid}/positions", async (
     Guid id,
     PositionIngestRequest request,
+    ClaimsPrincipal principal,
     FleetDbContext db,
     IPublishEndpoint bus) =>
 {
+    if (HttpAccess.ForbidVehicleWrite(principal, id) is { } denied)
+    {
+        return denied;
+    }
+
     var vehicle = await db.Vehicles.FirstOrDefaultAsync(v => v.Id == id);
     if (vehicle is null)
     {

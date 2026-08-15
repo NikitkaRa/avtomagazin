@@ -12,6 +12,7 @@ public sealed class StaffSession : IAccessTokenAccessor
 
     public bool IsAuthenticated => Role is not null;
     public bool IsDriver => Role == "driver";
+    public bool IsAdmin => Role == "admin";
     public bool IsOperator => Role is "operator" or "admin";
 
     public event Action? Changed;

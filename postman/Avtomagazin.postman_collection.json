@@ -7,6 +7,7 @@
   "variable": [
     { "key": "baseUrl", "value": "http://127.0.0.1:5100" },
     { "key": "token", "value": "" },
+    { "key": "adminToken", "value": "" },
     { "key": "vehicleId", "value": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa" },
     { "key": "stopId", "value": "dddddddd-dddd-dddd-dddd-ddddddddddd1" },
     { "key": "deviceToken", "value": "postman-device-1" }
@@ -28,6 +29,101 @@
         "method": "GET",
         "header": [],
         "url": "{{baseUrl}}/health"
+      }
+    },
+    {
+      "name": "Register resident",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('status 200', () => pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.test('resident role', () => pm.expect(json.role).to.eql('resident'));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"new-{{$guid}}@demo.by\",\n  \"password\": \"secret12\",\n  \"name\": \"Марина\",\n  \"client\": \"resident\"\n}"
+        },
+        "url": "{{baseUrl}}/identity/api/auth/register"
+      }
+    },
+    {
+      "name": "Register staff driver",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('status 201', () => pm.response.to.have.status(201));",
+              "const json = pm.response.json();",
+              "pm.test('pending driver', () => {",
+              "  pm.expect(json.role).to.eql('driver');",
+              "  pm.expect(json.status).to.eql('pending');",
+              "  pm.expect(json.accessToken).to.not.be.ok;",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"staff-{{$guid}}@demo.by\",\n  \"password\": \"secret12\",\n  \"name\": \"Пётр\",\n  \"client\": \"staff\",\n  \"staffRole\": \"driver\"\n}"
+        },
+        "url": "{{baseUrl}}/identity/api/auth/register"
+      }
+    },
+    {
+      "name": "Login admin",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('status 200', () => pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.collectionVariables.set('adminToken', json.accessToken);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"admin@demo.by\",\n  \"password\": \"demo\"\n}"
+        },
+        "url": "{{baseUrl}}/identity/api/auth/login"
+      }
+    },
+    {
+      "name": "List users",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('status 200', () => pm.response.to.have.status(200));",
+              "pm.test('array', () => pm.expect(pm.response.json()).to.be.an('array'));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+        "url": "{{baseUrl}}/identity/api/users"
       }
     },
     {
@@ -173,12 +269,33 @@
       ],
       "request": {
         "method": "POST",
-        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{token}}" }
+        ],
         "body": {
           "mode": "raw",
           "raw": "{\n  \"deviceToken\": \"{{deviceToken}}\",\n  \"platform\": \"ios\",\n  \"stopId\": \"{{stopId}}\",\n  \"settlementName\": \"Индура\"\n}"
         },
         "url": "{{baseUrl}}/notifications/api/favorites"
+      }
+    },
+    {
+      "name": "Favorite subscriber stats",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('status 200', () => pm.response.to.have.status(200));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+        "url": "{{baseUrl}}/notifications/api/favorites/stats"
       }
     },
     {
@@ -195,7 +312,10 @@
       ],
       "request": {
         "method": "POST",
-        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{token}}" }
+        ],
         "body": {
           "mode": "raw",
           "raw": "{\n  \"vehicleId\": \"{{vehicleId}}\"\n}"
@@ -217,7 +337,10 @@
       ],
       "request": {
         "method": "POST",
-        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{token}}" }
+        ],
         "body": {
           "mode": "raw",
           "raw": "{\n  \"vehicleId\": \"{{vehicleId}}\",\n  \"stopId\": \"{{stopId}}\",\n  \"withinScheduledWindow\": true\n}"

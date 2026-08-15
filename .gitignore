@@ -49,4 +49,5 @@ artifacts/
 appsettings.*.local.json
 .env
 .env.*
+!.env.example
 .run-logs/

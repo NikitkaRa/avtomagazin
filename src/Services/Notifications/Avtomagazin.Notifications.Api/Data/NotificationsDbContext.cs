@@ -17,6 +17,7 @@ public sealed class NotificationsDbContext(DbContextOptions<NotificationsDbConte
             e.Property(x => x.DeviceToken).HasMaxLength(512);
             e.Property(x => x.Platform).HasMaxLength(32);
             e.Property(x => x.SettlementName).HasMaxLength(200);
+            e.HasIndex(x => x.UserId);
             e.HasMany(x => x.Favorites).WithOne(x => x.Device).HasForeignKey(x => x.DeviceSubscriptionId);
         });
 
@@ -24,6 +25,9 @@ public sealed class NotificationsDbContext(DbContextOptions<NotificationsDbConte
         {
             e.HasKey(x => x.Id);
             e.HasIndex(x => new { x.DeviceSubscriptionId, x.StopId }).IsUnique();
+            e.HasIndex(x => new { x.UserId, x.StopId })
+                .IsUnique()
+                .HasFilter("\"UserId\" IS NOT NULL");
             e.Property(x => x.SettlementName).HasMaxLength(200);
         });
 
@@ -52,6 +56,7 @@ public sealed class DeviceSubscription
 public sealed class FavoriteStop
 {
     public Guid Id { get; set; }
+    public Guid? UserId { get; set; }
     public Guid DeviceSubscriptionId { get; set; }
     [System.Text.Json.Serialization.JsonIgnore]
     public DeviceSubscription Device { get; set; } = null!;

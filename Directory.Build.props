@@ -2,7 +2,17 @@
   <PropertyGroup>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <Configurations>Debug;Staging;Release</Configurations>
     <!-- Transitive Microsoft.OpenApi CVE until ASP.NET OpenApi package bumps; local demo only -->
     <NoWarn>$(NoWarn);NU1903</NoWarn>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)' == 'Debug'">
+    <DefineConstants>$(DefineConstants);APP_DEV</DefineConstants>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)' == 'Staging'">
+    <DefineConstants>$(DefineConstants);APP_STAGING</DefineConstants>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <DefineConstants>$(DefineConstants);APP_PROD</DefineConstants>
   </PropertyGroup>
 </Project>

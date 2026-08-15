@@ -1,44 +1,59 @@
 @inject AvtomagazinClient Api
 @inject StaffSession Session
 
-<section class="hero-login">
-    <p class="eyebrow">Демо для райпо / Минсвязи</p>
-    <h1>Приложение персонала</h1>
-    <p class="sub">Один вход. Водитель транслирует точку, оператор видит весь парк.</p>
-</section>
+<div class="auth-gate">
+    <div class="auth-bg" aria-hidden="true"></div>
+    <div class="auth-veil" aria-hidden="true"></div>
 
-<div class="stack">
-    <button class="role-card" @onclick='() => EnterAsync("seller@demo.by")'>
-        <strong>Водитель Озеричино</strong>
-        <span>Рейс Пуховичского райпо. Гео у деревни, кнопка «На месте».</span>
-    </button>
-    <button class="role-card" @onclick='() => EnterAsync("driver@demo.by")'>
-        <strong>Водитель Гродно</strong>
-        <span>Рейс Гродненского райпо. Индура, Озёры, Скидель.</span>
-    </button>
-    <button class="role-card" @onclick='() => EnterAsync("operator@demo.by")'>
-        <strong>Оператор райпо</strong>
-        <span>Карта автолавок, задержки, покрытие деревень.</span>
-    </button>
-    @if (!string.IsNullOrEmpty(_error))
-    {
-        <div class="alert">@_error</div>
-    }
-    <p class="muted tiny">Пароль у всех демо-аккаунтов: demo. Без Tailscale и без серверов — только этот компьютер.</p>
+    <section class="auth-panel">
+        <p class="auth-brand">Автомагазин</p>
+        <h1 class="auth-title">Вход в панель</h1>
+        <p class="auth-lead">Персонал райпо. Жителям — приложение жителя.</p>
+
+        <form class="auth-form" @onsubmit="EnterAsync" @onsubmit:preventDefault>
+            <label class="auth-field">
+                <span>Email</span>
+                <input type="email" @bind="_email" autocomplete="username" autofocus />
+            </label>
+            <label class="auth-field">
+                <span>Пароль</span>
+                <input type="password" @bind="_password" autocomplete="current-password" />
+            </label>
+
+            @if (!string.IsNullOrEmpty(_error))
+            {
+                <div class="alert" role="alert">@_error</div>
+            }
+
+            <button type="submit" class="btn auth-submit" disabled="@_busy">
+                @(_busy ? "…" : "Войти")
+            </button>
+        </form>
+    </section>
 </div>
 
 @code {
+    private string _email = "";
+    private string _password = "";
     private string? _error;
+    private bool _busy;
 
-    private async Task EnterAsync(string email)
+    private async Task EnterAsync()
     {
         _error = null;
+        _busy = true;
         try
         {
-            var login = await Api.LoginAsync(email, "demo");
+            var login = await Api.LoginAsync(_email.Trim(), _password);
             if (login is null)
             {
-                _error = "Не удалось войти. Поднимите API (порт 5100).";
+                _error = "Неверный email или пароль.";
+                return;
+            }
+
+            if (login.Role is not ("driver" or "operator" or "admin"))
+            {
+                _error = "Этот аккаунт для жителей. Откройте приложение жителя.";
                 return;
             }
 
@@ -47,6 +62,10 @@
         catch (Exception ex)
         {
             _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
         }
     }
 }

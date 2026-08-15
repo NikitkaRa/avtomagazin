@@ -1,0 +1,162 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: avtomagazin
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: postgres
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./deploy/init-databases.sql:/docker-entrypoint-initdb.d/init-databases.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U avtomagazin"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  rabbitmq:
+    image: rabbitmq:3.13-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: avtomagazin
+      RABBITMQ_DEFAULT_PASS: ${POSTGRES_PASSWORD}
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  identity:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile
+      args:
+        PROJECT: src/Services/Identity/Avtomagazin.Identity.Api/Avtomagazin.Identity.Api.csproj
+        ASSEMBLY: Avtomagazin.Identity.Api.dll
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      Jwt__Key: ${JWT_KEY}
+      Internal__Key: ${INTERNAL_KEY}
+      ConnectionStrings__Identity: Host=postgres;Port=5432;Database=avtomagazin_identity;Username=avtomagazin;Password=${POSTGRES_PASSWORD}
+      RabbitMq__Host: rabbitmq
+      RabbitMq__Username: avtomagazin
+      RabbitMq__Password: ${POSTGRES_PASSWORD}
+      Seed__DemoUsers: "false"
+      Bootstrap__AdminEmail: ${ADMIN_EMAIL}
+      Bootstrap__AdminPassword: ${ADMIN_PASSWORD}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+
+  fleet:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile
+      args:
+        PROJECT: src/Services/Fleet/Avtomagazin.Fleet.Api/Avtomagazin.Fleet.Api.csproj
+        ASSEMBLY: Avtomagazin.Fleet.Api.dll
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      Jwt__Key: ${JWT_KEY}
+      Internal__Key: ${INTERNAL_KEY}
+      Internal__IdentityBaseUrl: http://identity:8080
+      ConnectionStrings__Fleet: Host=postgres;Port=5432;Database=avtomagazin_fleet;Username=avtomagazin;Password=${POSTGRES_PASSWORD}
+      RabbitMq__Host: rabbitmq
+      RabbitMq__Username: avtomagazin
+      RabbitMq__Password: ${POSTGRES_PASSWORD}
+      Gps__Provider: None
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+
+  routing:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile
+      args:
+        PROJECT: src/Services/Routing/Avtomagazin.Routing.Api/Avtomagazin.Routing.Api.csproj
+        ASSEMBLY: Avtomagazin.Routing.Api.dll
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      Jwt__Key: ${JWT_KEY}
+      Internal__Key: ${INTERNAL_KEY}
+      Internal__IdentityBaseUrl: http://identity:8080
+      ConnectionStrings__Routing: Host=postgres;Port=5432;Database=avtomagazin_routing;Username=avtomagazin;Password=${POSTGRES_PASSWORD}
+      RabbitMq__Host: rabbitmq
+      RabbitMq__Username: avtomagazin
+      RabbitMq__Password: ${POSTGRES_PASSWORD}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+
+  notifications:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile
+      args:
+        PROJECT: src/Services/Notifications/Avtomagazin.Notifications.Api/Avtomagazin.Notifications.Api.csproj
+        ASSEMBLY: Avtomagazin.Notifications.Api.dll
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      Jwt__Key: ${JWT_KEY}
+      Internal__Key: ${INTERNAL_KEY}
+      Internal__IdentityBaseUrl: http://identity:8080
+      ConnectionStrings__Notifications: Host=postgres;Port=5432;Database=avtomagazin_notifications;Username=avtomagazin;Password=${POSTGRES_PASSWORD}
+      RabbitMq__Host: rabbitmq
+      RabbitMq__Username: avtomagazin
+      RabbitMq__Password: ${POSTGRES_PASSWORD}
+      Fcm__ServiceAccountJson: ${FCM_SERVICE_ACCOUNT_JSON:-}
+      Fcm__ServiceAccountPath: ${FCM_SERVICE_ACCOUNT_PATH:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+
+  gateway:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile
+      args:
+        PROJECT: src/Gateway/Avtomagazin.Gateway/Avtomagazin.Gateway.csproj
+        ASSEMBLY: Avtomagazin.Gateway.dll
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+    ports:
+      - "8080:8080"
+    depends_on:
+      - identity
+      - fleet
+      - routing
+      - notifications
+    restart: unless-stopped
+
+  admin:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile
+      args:
+        PROJECT: src/Apps/Avtomagazin.Admin/Avtomagazin.Admin.csproj
+        ASSEMBLY: Avtomagazin.Admin.dll
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      Gateway__BaseUrl: http://gateway:8080
+    ports:
+      - "8081:8080"
+    depends_on:
+      - gateway
+    restart: unless-stopped
+
+volumes:
+  pgdata:

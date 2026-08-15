@@ -14,7 +14,7 @@ else
   echo "No .run-logs/pids — nothing to stop."
 fi
 
-for port in 5100 5101 5102 5103 5104 5200 5201; do
+for port in 5100 5101 5102 5103 5104 5200; do
   pid=$(lsof -tiTCP:$port -sTCP:LISTEN 2>/dev/null || true)
   if [[ -n "${pid:-}" ]]; then
     kill $pid 2>/dev/null || true

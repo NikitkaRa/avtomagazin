@@ -1,99 +1,73 @@
-using System.IdentityModel.Tokens.Jwt;
-using System.Security.Claims;
-using System.Text;
-using Avtomagazin.Contracts;
+using Avtomagazin.Identity.Api;
+using Avtomagazin.Identity.Api.Data;
 using Avtomagazin.ServiceDefaults;
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.IdentityModel.Tokens;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.AddAvtomagazinDefaults();
+DeploySecrets.EnsureInternalKey(builder.Configuration, builder.Environment);
+
+builder.Services.AddScoped<ISessionGuard, IdentityDbSessionGuard>();
+builder.Services.AddSingleton<PasswordHasher<AppUser>>();
+
+var identityCs = DeploySecrets.ConnectionString(
+    builder.Configuration,
+    builder.Environment,
+    "Identity",
+    "Host=localhost;Port=5432;Database=avtomagazin_identity;Username=avtomagazin;Password=avtomagazin");
+
+if (builder.Environment.IsEnvironment("Testing"))
+{
+    builder.Services.AddDbContext<IdentityDbContext>(options =>
+        options.UseInMemoryDatabase("avtomagazin-identity-tests"));
+}
+else
+{
+    builder.Services.AddDbContext<IdentityDbContext>(options => options.UseNpgsql(identityCs));
+    builder.AddAvtomagazinPostgresHealth("postgres", identityCs);
+}
 
 var app = builder.Build();
 app.UseAvtomagazinDefaults();
 
-var grodnoVan = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
-var pukhovichiVan = Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
-var users = new List<UserRecord>
+if (!app.Environment.IsEnvironment("Testing"))
 {
-    new(Guid.Parse("11111111-1111-1111-1111-111111111111"), "resident@demo.by", "Житель", Roles.Resident, "demo", null),
-    new(Guid.Parse("22222222-2222-2222-2222-222222222222"), "driver@demo.by", "Водитель Гродно", Roles.Driver, "demo", grodnoVan),
-    new(Guid.Parse("55555555-5555-5555-5555-555555555555"), "seller@demo.by", "Водитель Озеричино", Roles.Driver, "demo", pukhovichiVan),
-    new(Guid.Parse("33333333-3333-3333-3333-333333333333"), "operator@demo.by", "Оператор", Roles.Operator, "demo", null),
-    new(Guid.Parse("44444444-4444-4444-4444-444444444444"), "admin@demo.by", "Админ", Roles.Admin, "demo", null)
-};
+    await Postgres.EnsureDatabaseAsync(identityCs);
+}
 
-app.MapPost("/api/auth/login", ([FromBody] LoginRequest request, IConfiguration config) =>
+using (var scope = app.Services.CreateScope())
 {
-    var user = users.FirstOrDefault(u =>
-        u.Email.Equals(request.Email, StringComparison.OrdinalIgnoreCase)
-        && u.Password == request.Password);
-
-    if (user is null)
+    var db = scope.ServiceProvider.GetRequiredService<IdentityDbContext>();
+    await db.Database.EnsureCreatedAsync();
+    if (db.Database.IsRelational())
     {
-        return Results.Unauthorized();
+        await db.Database.ExecuteSqlRawAsync(
+            """ALTER TABLE "Users" ADD COLUMN IF NOT EXISTS "Status" character varying(32) NOT NULL DEFAULT 'active';""");
+        await db.Database.ExecuteSqlRawAsync(
+            """ALTER TABLE "Users" ADD COLUMN IF NOT EXISTS "ApprovedAtUtc" timestamp with time zone;""");
+        await db.Database.ExecuteSqlRawAsync(
+            """ALTER TABLE "Users" ADD COLUMN IF NOT EXISTS "TokenVersion" integer NOT NULL DEFAULT 1;""");
+        await db.Database.ExecuteSqlRawAsync(
+            """ALTER TABLE "Users" ADD COLUMN IF NOT EXISTS "FailedLoginCount" integer NOT NULL DEFAULT 0;""");
+        await db.Database.ExecuteSqlRawAsync(
+            """ALTER TABLE "Users" ADD COLUMN IF NOT EXISTS "LockoutEndUtc" timestamp with time zone;""");
+        await db.Database.ExecuteSqlRawAsync(
+            """UPDATE "Users" SET "Status" = 'active' WHERE "Status" IS NULL OR "Status" = '';""");
+        await db.Database.ExecuteSqlRawAsync(
+            """UPDATE "Users" SET "TokenVersion" = 1 WHERE "TokenVersion" < 1;""");
     }
 
-    var key = config["Jwt:Key"] ?? "dev-only-change-me-avtomagazin-super-secret-key-32b";
-    var credentials = new SigningCredentials(
-        new SymmetricSecurityKey(Encoding.UTF8.GetBytes(key)),
-        SecurityAlgorithms.HmacSha256);
-
-    var claims = new[]
+    var seedDemo = builder.Configuration.GetValue("Seed:DemoUsers", builder.Environment.IsDevelopment() || builder.Environment.IsEnvironment("Testing"));
+    if (seedDemo)
     {
-        new Claim(JwtRegisteredClaimNames.Sub, user.Id.ToString()),
-        new Claim(JwtRegisteredClaimNames.Email, user.Email),
-        new Claim(ClaimTypes.Role, user.Role),
-        new Claim("name", user.DisplayName)
-    };
-
-    if (user.VehicleId is Guid vehicleId)
-    {
-        claims = [.. claims, new Claim("vehicleId", vehicleId.ToString())];
+        await Seed.EnsureDemoUsersAsync(db);
     }
 
-    var token = new JwtSecurityToken(
-        issuer: config["Jwt:Issuer"] ?? "avtomagazin",
-        audience: config["Jwt:Audience"] ?? "avtomagazin",
-        claims: claims,
-        expires: DateTime.UtcNow.AddHours(12),
-        signingCredentials: credentials);
+    await Seed.EnsureBootstrapAdminAsync(db, builder.Configuration);
+}
 
-    return Results.Ok(new
-    {
-        accessToken = new JwtSecurityTokenHandler().WriteToken(token),
-        role = user.Role,
-        userId = user.Id,
-        email = user.Email,
-        name = user.DisplayName,
-        vehicleId = user.VehicleId
-    });
-})
-.WithName("Login")
-.WithTags("Auth");
-
-app.MapGet("/api/auth/me", (ClaimsPrincipal user) =>
-{
-    if (user.Identity?.IsAuthenticated != true)
-    {
-        return Results.Unauthorized();
-    }
-
-    return Results.Ok(new
-    {
-        id = user.FindFirstValue(JwtRegisteredClaimNames.Sub) ?? user.FindFirstValue(ClaimTypes.NameIdentifier),
-        email = user.FindFirstValue(JwtRegisteredClaimNames.Email) ?? user.FindFirstValue(ClaimTypes.Email),
-        role = user.FindFirstValue(ClaimTypes.Role),
-        name = user.FindFirstValue("name")
-    });
-})
-.RequireAuthorization()
-.WithName("Me")
-.WithTags("Auth");
-
+IdentityRoutes.Map(app);
 app.Run();
-
-internal sealed record LoginRequest(string Email, string Password);
-internal sealed record UserRecord(Guid Id, string Email, string DisplayName, string Role, string Password, Guid? VehicleId);
 
 public partial class Program;

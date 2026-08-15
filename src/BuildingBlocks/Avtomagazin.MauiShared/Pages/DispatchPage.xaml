@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:mapsui="clr-namespace:Mapsui.UI.Maui;assembly=Mapsui.Maui"
+             x:Class="Avtomagazin.MauiShared.DispatchPage"
+             Title="Парк"
+             BackgroundColor="#12241C">
+    <ScrollView>
+        <VerticalStackLayout Padding="16" Spacing="10">
+            <Label Text="Все автолавки" FontSize="22" FontAttributes="Bold" TextColor="#F3F7F3" />
+            <mapsui:MapControl x:Name="MapView" HeightRequest="280" />
+            <Label Text="Сейчас в рейсе" FontAttributes="Bold" TextColor="#F3F7F3" />
+            <StackLayout x:Name="Vans" />
+            <Label Text="Пуши" FontAttributes="Bold" TextColor="#F3F7F3" />
+            <StackLayout x:Name="Pushes" />
+            <Button Text="Выйти" Clicked="OnRole" BackgroundColor="#1B3328" TextColor="#F3F7F3" />
+        </VerticalStackLayout>
+    </ScrollView>
+</ContentPage>

@@ -7,7 +7,7 @@
 ## Архитектура
 
 ```
-Admin :5200 / Resident :5201 / Driver UI
+ResidentApp / StaffApp / Admin :5200
               │
               ▼
          Gateway (YARP :5100)
@@ -22,13 +22,24 @@ Identity   Fleet        Routing       Notifications
 | Модуль | Порт | Что делает |
 |--------|------|------------|
 | **Gateway** | 5100 | единая точка API |
-| **Identity** | 5101 | JWT / роли |
+| **Identity** | 5101 | JWT, роли, заявки персонала |
 | **Fleet** | 5102 | автопарк + GPS |
 | **Routing** | 5103 | маршруты, ETA, coverage |
 | **Notifications** | 5104 | пуши / подписки |
-| **Admin** | 5200 | диспетчерская Blazor |
-| **ResidentWeb** | 5201 | кабинет жителя, offline-first PWA |
-| **Mobile** | Android / iOS | нативное MAUI: житель, водитель, оператор |
+| **Admin** | 5200 | диспетчерская Blazor (диспетчер и админ) |
+| **ResidentApp** | Android / iOS | житель: регистрация сразу, карта, подписка |
+| **StaffApp** | Android / iOS | водитель / диспетчер: заявка, вход после подтверждения |
+
+### Роли
+
+| Роль (JWT) | Кто | Как появляется |
+|------------|-----|----------------|
+| `resident` | Житель деревни | Регистрация в ResidentApp, сразу активен |
+| `driver` | Водитель-продавец в автолавке | Регистрация в StaffApp → админ подтверждает |
+| `operator` | Диспетчер в офисе / админке | То же, заявка из StaffApp |
+| `admin` | Обычно один, подтверждает персонал | Только сидом, саморегистрации нет |
+
+Статусы: `pending` (заявка, JWT не выдаём) → `active` → `disabled`. Логин в `pending`/`disabled` — 403.
 
 ### События (MassTransit)
 
@@ -38,7 +49,7 @@ Identity   Fleet        Routing       Notifications
 - `ScheduleChanged` — Routing → Notifications (избранное этой остановки)
 - `CoverageVisitRecorded` — Routing → Gov adapter / audit
 
-Database-per-service: `avtomagazin_fleet`, `avtomagazin_routing`, `avtomagazin_notifications`.
+Database-per-service: `avtomagazin_identity`, `avtomagazin_fleet`, `avtomagazin_routing`, `avtomagazin_notifications`.
 
 ## Быстрый старт
 
@@ -61,19 +72,42 @@ dotnet run --project src/Services/Routing/Avtomagazin.Routing.Api
 dotnet run --project src/Services/Notifications/Avtomagazin.Notifications.Api
 dotnet run --project src/Gateway/Avtomagazin.Gateway
 dotnet run --project src/Apps/Avtomagazin.Admin
-dotnet run --project src/Apps/Avtomagazin.ResidentWeb
 ```
 
+Или `./scripts/start-dev.sh`.
+
 UI:
-- Житель http://127.0.0.1:5201 — PWA на случай браузера
-- Персонал http://127.0.0.1:5200 — диспетчер на десктопе
-- Телефон: `./scripts/run-android.sh` (MAUI, Android). На эмуляторе API — `http://10.0.2.2:5100`. На живом телефоне впиши LAN, например `http://192.168.1.7:5100`.
+- Персонал http://127.0.0.1:5200 — диспетчер и админ, вход email/пароль
+- Телефон: `./scripts/run-android.sh resident` или `staff`. Dev сам ходит на локальный API (эмулятор `10.0.2.2:5100`, устройство — `adb reverse` на `127.0.0.1:5100`). URL руками не вводится.
+
+### Среды
+
+| Конфиг | Клиенты | API |
+|--------|---------|-----|
+| **Debug** (Development) | локальный gateway `:5100` | `ASPNETCORE_ENVIRONMENT=Development` |
+| **Staging** | `https://api.staging.avtomagazin.by` | `ASPNETCORE_ENVIRONMENT=Staging` |
+| **Release** (Production) | `https://api.avtomagazin.by` | `ASPNETCORE_ENVIRONMENT=Production` |
+
+```bash
+dotnet build src/Apps/Avtomagazin.ResidentApp/Avtomagazin.ResidentApp.csproj -c Staging -f net10.0-android
+dotnet run --project src/Apps/Avtomagazin.Admin --launch-profile staging
+```
 
 Сценарий для комиссии: `DEMO.md`
 
 ### 3. Проверка
 
 ```bash
+# регистрация жителя — сразу JWT
+curl -s http://localhost:5100/identity/api/auth/register \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"marina@demo.by","password":"secret12","name":"Марина","client":"resident"}'
+
+# заявка водителя — без JWT, ждёт админа
+curl -s http://localhost:5100/identity/api/auth/register \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"petr@demo.by","password":"secret12","name":"Пётр","client":"staff","staffRole":"driver"}'
+
 # логин
 curl -s http://localhost:5100/identity/api/auth/login \
   -H 'Content-Type: application/json' \
@@ -85,22 +119,34 @@ curl -s http://localhost:5100/fleet/api/vehicles
 # ETA
 curl -s 'http://localhost:5100/routing/api/eta?settlement=Индура'
 
-# подписка на пуши (мок)
+# подписка на пуши (нужен JWT жителя)
 curl -s http://localhost:5100/notifications/api/devices/register \
+  -H 'Authorization: Bearer <token>' \
   -H 'Content-Type: application/json' \
   -d '{"deviceToken":"demo-token-1","platform":"ios","settlementName":"Индура"}'
 ```
 
-Демо-пользователи: `resident@demo.by` / `driver@demo.by` / `operator@demo.by` / `admin@demo.by`, пароль `demo`.
+Демо-пользователи (только Development) уже **активны**, пароль `demo`: `resident@demo.by` / `driver@demo.by` / `seller@demo.by` / `operator@demo.by` / `admin@demo.by`.
 
-Fleet сам крутит `MockGpsProvider` каждые 15с → публикует позиции → Routing считает ETA → Notifications логирует пуши.
+Новая регистрация: житель (`client=resident`) входит сразу; водитель и диспетчер (`client=staff`, `staffRole=driver|operator`) ждут `POST /identity/api/users/{id}/approve` от админа. Водителю при подтверждении нужна автолавка. Пароль от 8 символов.
+
+Локально Fleet крутит `MockGpsProvider` каждые 15с. В Production мок выключен: точку шлёт телефон водителя.
+
+## Выкат
+
+```bash
+cp .env.example .env   # ADMIN_EMAIL, ADMIN_PASSWORD; пустые ключи скрипт сам сгенерит
+./scripts/up-prod.sh
+```
+
+API `:8080`, админка `:8081`. Postgres/Rabbit наружу не торчат. TLS — Cloudflare Full на эти порты.
 
 ## Куда расширять
 
 1. **GPS** — реализовать `IGpsProvider` под Wialon/Traccar, оставить mock для демо.
 2. **Пуши** — `IPushSender` → FCM/APNs.
 3. **Гос** — `IGovIntegration` → контракт «Умный город» / OpenAPI от Минсвязи.
-4. **Моб** — житель уже PWA; дальше Expo/MAUI, если нужен стор.
+4. **Моб** — два бинарника MAUI (житель / персонал), общая `MauiShared` + `ApiClient`.
 5. **Карты** — по умолчанию OSM (точка, без ключа). Яндекс.Карты: ключ в `Maps:YandexApiKey`. Без ключа и без сети — схема остановок, не тайлы.
 
 ## Тесты

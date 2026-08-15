@@ -54,16 +54,85 @@ public sealed class AvtomagazinClient(HttpClient http, IAccessTokenAccessor? tok
         }
     }
 
-    public async Task<LoginResponse?> LoginAsync(string email, string password, CancellationToken ct = default)
+    public Task<LoginResponse?> LoginAsync(string email, string password, CancellationToken ct = default)
+        => AuthAsync("identity/api/auth/login", new { email, password }, ct);
+
+    public Task<LoginResponse?> RegisterAsync(
+        string email,
+        string password,
+        string? name,
+        string client,
+        string? staffRole = null,
+        CancellationToken ct = default)
+        => AuthAsync("identity/api/auth/register", new { email, password, name, client, staffRole }, ct);
+
+    private async Task<LoginResponse?> AuthAsync(string path, object body, CancellationToken ct)
     {
         ApplyAuth();
-        var response = await http.PostAsJsonAsync("identity/api/auth/login", new { email, password }, ct);
+        var response = await http.PostAsJsonAsync(path, body, ct);
+        if (response.StatusCode == System.Net.HttpStatusCode.Conflict)
+        {
+            throw new InvalidOperationException("Этот email уже зарегистрирован.");
+        }
+
+        if (response.StatusCode is System.Net.HttpStatusCode.BadRequest or System.Net.HttpStatusCode.Forbidden)
+        {
+            var payload = await response.Content.ReadFromJsonAsync<ErrorPayload>(JsonOptions, ct);
+            throw new InvalidOperationException(payload?.Error ?? "Проверь email и пароль.");
+        }
+
         if (!response.IsSuccessStatusCode)
         {
             return null;
         }
 
         return await response.Content.ReadFromJsonAsync<LoginResponse>(JsonOptions, ct);
+    }
+
+    public Task<List<AccountDto>> GetUsersAsync(string? status = null, CancellationToken ct = default)
+    {
+        var path = string.IsNullOrWhiteSpace(status)
+            ? "identity/api/users"
+            : $"identity/api/users?status={Uri.EscapeDataString(status)}";
+        return GetListAsync<AccountDto>(path, ct);
+    }
+
+    public async Task<AccountDto?> ApproveUserAsync(Guid id, string? role = null, Guid? vehicleId = null, CancellationToken ct = default)
+    {
+        ApplyAuth();
+        var response = await http.PostAsJsonAsync($"identity/api/users/{id}/approve", new { role, vehicleId }, ct);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<AccountDto>(JsonOptions, ct);
+    }
+
+    public async Task RejectUserAsync(Guid id, CancellationToken ct = default)
+    {
+        ApplyAuth();
+        var response = await http.PostAsJsonAsync($"identity/api/users/{id}/reject", new { }, ct);
+        response.EnsureSuccessStatusCode();
+    }
+
+    public async Task DisableUserAsync(Guid id, CancellationToken ct = default)
+    {
+        ApplyAuth();
+        var response = await http.PostAsJsonAsync($"identity/api/users/{id}/disable", new { }, ct);
+        response.EnsureSuccessStatusCode();
+    }
+
+    public Task<LoginResponse?> ChangePasswordAsync(string current, string next, CancellationToken ct = default)
+        => AuthAsync("identity/api/auth/password", new { current, next }, ct);
+
+    public async Task ResetUserPasswordAsync(Guid id, string password, CancellationToken ct = default)
+    {
+        ApplyAuth();
+        var response = await http.PostAsJsonAsync($"identity/api/users/{id}/password", new { password }, ct);
+        if (response.StatusCode == System.Net.HttpStatusCode.BadRequest)
+        {
+            var payload = await response.Content.ReadFromJsonAsync<ErrorPayload>(JsonOptions, ct);
+            throw new InvalidOperationException(payload?.Error ?? "Пароль не принят.");
+        }
+
+        response.EnsureSuccessStatusCode();
     }
 
     public Task<List<VehicleDto>> GetVehiclesAsync(CancellationToken ct = default)
@@ -162,6 +231,12 @@ public sealed class AvtomagazinClient(HttpClient http, IAccessTokenAccessor? tok
         response.EnsureSuccessStatusCode();
     }
 
+    public Task<List<FavoriteDto>> GetFavoritesAsync(CancellationToken ct = default)
+        => GetListAsync<FavoriteDto>("notifications/api/favorites", ct);
+
+    public Task<List<FavoriteStatsDto>> GetFavoriteStatsAsync(CancellationToken ct = default)
+        => GetListAsync<FavoriteStatsDto>("notifications/api/favorites/stats", ct);
+
     public async Task AddFavoriteStopAsync(string deviceToken, Guid stopId, string settlementName, string platform = "web", CancellationToken ct = default)
     {
         ApplyAuth();
@@ -172,13 +247,14 @@ public sealed class AvtomagazinClient(HttpClient http, IAccessTokenAccessor? tok
         response.EnsureSuccessStatusCode();
     }
 
-    public async Task RemoveFavoriteStopAsync(string deviceToken, Guid stopId, CancellationToken ct = default)
+    public async Task RemoveFavoriteStopAsync(Guid stopId, CancellationToken ct = default)
     {
         ApplyAuth();
-        var response = await http.DeleteAsync(
-            $"notifications/api/favorites?deviceToken={Uri.EscapeDataString(deviceToken)}&stopId={stopId}",
-            ct);
-        response.EnsureSuccessStatusCode();
+        var response = await http.DeleteAsync($"notifications/api/favorites/{stopId}", ct);
+        if (response.StatusCode != System.Net.HttpStatusCode.NotFound)
+        {
+            response.EnsureSuccessStatusCode();
+        }
     }
 
     public Task<List<PresenceReportDto>> GetPresenceReportsAsync(CancellationToken ct = default)
@@ -216,12 +292,30 @@ public sealed class AvtomagazinClient(HttpClient http, IAccessTokenAccessor? tok
 }
 
 public sealed record LoginResponse(
-    string AccessToken,
+    string? AccessToken,
     string Role,
     Guid UserId,
     string Email,
     string? Name,
-    Guid? VehicleId);
+    Guid? VehicleId,
+    string? Status);
+
+public sealed record AccountDto(
+    Guid Id,
+    string Email,
+    string DisplayName,
+    string Role,
+    string RoleTitle,
+    string Status,
+    Guid? VehicleId,
+    DateTimeOffset CreatedAtUtc,
+    DateTimeOffset? ApprovedAtUtc);
+
+internal sealed record ErrorPayload(string? Error);
+
+public sealed record FavoriteDto(Guid StopId, string SettlementName, DateTimeOffset CreatedAtUtc);
+
+public sealed record FavoriteStatsDto(Guid StopId, string SettlementName, int SubscriberCount);
 
 public sealed record VehicleDto(
     Guid Id,
@@ -307,7 +401,7 @@ public sealed record PresenceReportDto(
     Guid StopId,
     string SettlementName,
     string Kind,
-    string DeviceToken,
+    string? DeviceToken,
     DateTimeOffset ReportedAtUtc);
 
 public sealed record SnapshotDto(

@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\BuildingBlocks\Avtomagazin.ApiClient\Avtomagazin.ApiClient.csproj" />
+    <ProjectReference Include="..\..\BuildingBlocks\Avtomagazin.ServiceDefaults\Avtomagazin.ServiceDefaults.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

@@ -1,8 +1,8 @@
 using Avtomagazin.Contracts.Events;
+using Avtomagazin.Notifications.Api;
 using Avtomagazin.Notifications.Api.Data;
 using Avtomagazin.Notifications.Api.Push;
 using MassTransit;
-using Microsoft.EntityFrameworkCore;
 
 namespace Avtomagazin.Notifications.Api.Consumers;
 
@@ -15,20 +15,11 @@ public sealed class ScheduleChangedConsumer(
         var msg = context.Message;
         var title = "Изменение расписания автолавки";
         var body = $"{msg.SettlementName}: {msg.Reason}";
-
-        var favoriteTokens = await db.FavoriteStops
-            .AsNoTracking()
-            .Where(f => f.StopId == msg.StopId)
-            .Select(f => f.Device.DeviceToken)
-            .ToListAsync(context.CancellationToken);
-
-        var legacyTokens = await db.DeviceSubscriptions
-            .AsNoTracking()
-            .Where(d => d.SettlementName == msg.SettlementName)
-            .Select(d => d.DeviceToken)
-            .ToListAsync(context.CancellationToken);
-
-        var tokens = favoriteTokens.Concat(legacyTokens).Distinct().ToList();
+        var tokens = await FavoritePush.TokensForStopAsync(
+            db,
+            msg.StopId,
+            msg.SettlementName,
+            context.CancellationToken);
 
         foreach (var token in tokens)
         {

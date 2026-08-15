@@ -1,3 +1,6 @@
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
+using Avtomagazin.Contracts;
 using Avtomagazin.Contracts.Events;
 using Avtomagazin.Notifications.Api.Consumers;
 using Avtomagazin.Notifications.Api.Data;
@@ -12,11 +15,36 @@ builder.AddAvtomagazinDefaults(bus =>
     bus.AddConsumer<ScheduleChangedConsumer>();
 });
 
-builder.Services.AddDbContext<NotificationsDbContext>(options =>
-    options.UseNpgsql(builder.Configuration.GetConnectionString("Notifications")
-                      ?? "Host=localhost;Port=5432;Database=avtomagazin_notifications;Username=avtomagazin;Password=avtomagazin"));
+var notificationsCs = DeploySecrets.ConnectionString(
+    builder.Configuration,
+    builder.Environment,
+    "Notifications",
+    "Host=localhost;Port=5432;Database=avtomagazin_notifications;Username=avtomagazin;Password=avtomagazin");
 
-builder.Services.AddSingleton<IPushSender, LoggingPushSender>();
+builder.Services.AddDbContext<NotificationsDbContext>(options =>
+{
+    if (builder.Environment.IsEnvironment("Testing"))
+    {
+        options.UseInMemoryDatabase("avtomagazin-notifications-tests");
+        return;
+    }
+
+    options.UseNpgsql(notificationsCs);
+});
+
+if (!builder.Environment.IsEnvironment("Testing"))
+{
+    builder.AddAvtomagazinPostgresHealth("postgres", notificationsCs);
+}
+
+if (FcmPushSender.IsConfigured(builder.Configuration))
+{
+    builder.Services.AddHttpClient<IPushSender, FcmPushSender>();
+}
+else
+{
+    builder.Services.AddSingleton<IPushSender, LoggingPushSender>();
+}
 
 var app = builder.Build();
 app.UseAvtomagazinDefaults();
@@ -31,34 +59,59 @@ using (var scope = app.Services.CreateScope())
             """
             CREATE TABLE IF NOT EXISTS "FavoriteStops" (
                 "Id" uuid NOT NULL PRIMARY KEY,
+                "UserId" uuid,
                 "DeviceSubscriptionId" uuid NOT NULL,
                 "StopId" uuid NOT NULL,
                 "SettlementName" character varying(200) NOT NULL,
                 "CreatedAtUtc" timestamp with time zone NOT NULL
             );
+            ALTER TABLE "FavoriteStops" ADD COLUMN IF NOT EXISTS "UserId" uuid;
             CREATE UNIQUE INDEX IF NOT EXISTS "IX_FavoriteStops_DeviceSubscriptionId_StopId"
                 ON "FavoriteStops" ("DeviceSubscriptionId", "StopId");
+            CREATE UNIQUE INDEX IF NOT EXISTS "IX_FavoriteStops_UserId_StopId"
+                ON "FavoriteStops" ("UserId", "StopId")
+                WHERE "UserId" IS NOT NULL;
             """);
     }
 }
 
-app.MapPost("/api/devices/register", async (DeviceRegistrationRequest request, NotificationsDbContext db) =>
+app.MapPost("/api/devices/register", async (
+    DeviceRegistrationRequest request,
+    ClaimsPrincipal principal,
+    NotificationsDbContext db) =>
 {
-    var device = await UpsertDeviceAsync(db, request.DeviceToken, request.Platform, request.SettlementName, request.UserId);
+    var userId = CurrentUserId(principal);
+    if (userId is null)
+    {
+        return Results.Unauthorized();
+    }
+
+    var device = await UpsertDeviceAsync(db, request.DeviceToken, request.Platform, request.SettlementName, userId);
     await db.SaveChangesAsync();
     return Results.Ok(new
     {
         device.Id,
         device.DeviceToken,
         device.Platform,
-        device.SettlementName
+        device.SettlementName,
+        device.UserId
     });
 })
+.RequireAuthorization()
 .WithName("RegisterDevice")
 .WithTags("Notifications");
 
-app.MapPost("/api/favorites", async (FavoriteStopRequest request, NotificationsDbContext db) =>
+app.MapPost("/api/favorites", async (
+    FavoriteStopRequest request,
+    ClaimsPrincipal principal,
+    NotificationsDbContext db) =>
 {
+    var userId = CurrentUserId(principal);
+    if (userId is null)
+    {
+        return Results.Unauthorized();
+    }
+
     if (string.IsNullOrWhiteSpace(request.DeviceToken) || request.StopId == Guid.Empty)
     {
         return Results.BadRequest(new { error = "deviceToken and stopId are required" });
@@ -69,16 +122,17 @@ app.MapPost("/api/favorites", async (FavoriteStopRequest request, NotificationsD
         request.DeviceToken,
         request.Platform ?? "web",
         request.SettlementName,
-        request.UserId);
+        userId);
 
     var existing = await db.FavoriteStops
-        .FirstOrDefaultAsync(f => f.DeviceSubscriptionId == device.Id && f.StopId == request.StopId);
+        .FirstOrDefaultAsync(f => f.UserId == userId && f.StopId == request.StopId);
 
     if (existing is null)
     {
         existing = new FavoriteStop
         {
             Id = Guid.NewGuid(),
+            UserId = userId,
             DeviceSubscriptionId = device.Id,
             StopId = request.StopId,
             SettlementName = request.SettlementName,
@@ -89,6 +143,7 @@ app.MapPost("/api/favorites", async (FavoriteStopRequest request, NotificationsD
     else
     {
         existing.SettlementName = request.SettlementName;
+        existing.DeviceSubscriptionId = device.Id;
     }
 
     await db.SaveChangesAsync();
@@ -97,17 +152,27 @@ app.MapPost("/api/favorites", async (FavoriteStopRequest request, NotificationsD
         existing.Id,
         existing.StopId,
         existing.SettlementName,
+        existing.UserId,
         deviceToken = device.DeviceToken
     });
 })
+.RequireAuthorization()
 .WithName("AddFavorite")
 .WithTags("Notifications");
 
-app.MapDelete("/api/favorites", async (string deviceToken, Guid stopId, NotificationsDbContext db) =>
+app.MapDelete("/api/favorites/{stopId:guid}", async (
+    Guid stopId,
+    ClaimsPrincipal principal,
+    NotificationsDbContext db) =>
 {
+    var userId = CurrentUserId(principal);
+    if (userId is null)
+    {
+        return Results.Unauthorized();
+    }
+
     var favorite = await db.FavoriteStops
-        .Include(f => f.Device)
-        .FirstOrDefaultAsync(f => f.Device.DeviceToken == deviceToken && f.StopId == stopId);
+        .FirstOrDefaultAsync(f => f.UserId == userId && f.StopId == stopId);
 
     if (favorite is null)
     {
@@ -118,21 +183,51 @@ app.MapDelete("/api/favorites", async (string deviceToken, Guid stopId, Notifica
     await db.SaveChangesAsync();
     return Results.NoContent();
 })
+.RequireAuthorization()
 .WithName("RemoveFavorite")
 .WithTags("Notifications");
 
-app.MapGet("/api/favorites", async (string deviceToken, NotificationsDbContext db) =>
+app.MapGet("/api/favorites", async (ClaimsPrincipal principal, NotificationsDbContext db) =>
 {
+    var userId = CurrentUserId(principal);
+    if (userId is null)
+    {
+        return Results.Unauthorized();
+    }
+
     var items = await db.FavoriteStops
         .AsNoTracking()
-        .Where(f => f.Device.DeviceToken == deviceToken)
+        .Where(f => f.UserId == userId)
         .OrderBy(f => f.SettlementName)
         .Select(f => new { f.StopId, f.SettlementName, f.CreatedAtUtc })
         .ToListAsync();
 
     return Results.Ok(items);
 })
+.RequireAuthorization()
 .WithName("ListFavorites")
+.WithTags("Notifications");
+
+app.MapGet("/api/favorites/stats", async (NotificationsDbContext db) =>
+{
+    var items = await db.FavoriteStops
+        .AsNoTracking()
+        .Where(f => f.UserId != null)
+        .GroupBy(f => new { f.StopId, f.SettlementName })
+        .Select(g => new
+        {
+            g.Key.StopId,
+            g.Key.SettlementName,
+            subscriberCount = g.Count()
+        })
+        .OrderByDescending(x => x.subscriberCount)
+        .ThenBy(x => x.SettlementName)
+        .ToListAsync();
+
+    return Results.Ok(items);
+})
+.RequireAuthorization(policy => policy.RequireRole(Roles.Operator, Roles.Admin, Roles.Driver))
+.WithName("FavoriteStats")
 .WithTags("Notifications");
 
 app.MapGet("/api/notifications", async (string? settlement, NotificationsDbContext db) =>
@@ -145,10 +240,23 @@ app.MapGet("/api/notifications", async (string? settlement, NotificationsDbConte
 
     return Results.Ok(await query.OrderByDescending(n => n.SentAtUtc).Take(100).ToListAsync());
 })
+.RequireAuthorization(policy => policy.RequireRole(Roles.Operator, Roles.Admin, Roles.Driver))
 .WithName("ListNotifications")
 .WithTags("Notifications");
 
 app.Run();
+
+static Guid? CurrentUserId(ClaimsPrincipal user)
+{
+    if (user.Identity?.IsAuthenticated != true)
+    {
+        return null;
+    }
+
+    var raw = user.FindFirstValue(JwtRegisteredClaimNames.Sub)
+              ?? user.FindFirstValue(ClaimTypes.NameIdentifier);
+    return Guid.TryParse(raw, out var id) ? id : null;
+}
 
 static async Task<DeviceSubscription> UpsertDeviceAsync(
     NotificationsDbContext db,

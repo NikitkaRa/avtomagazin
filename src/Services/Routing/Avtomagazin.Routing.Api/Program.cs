@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Avtomagazin.Contracts;
 using Avtomagazin.Contracts.Events;
 using Avtomagazin.Routing.Api.Consumers;
@@ -13,9 +14,27 @@ builder.AddAvtomagazinDefaults(bus =>
     bus.AddConsumer<VehiclePositionUpdatedConsumer>();
 });
 
+var routingCs = DeploySecrets.ConnectionString(
+    builder.Configuration,
+    builder.Environment,
+    "Routing",
+    "Host=localhost;Port=5432;Database=avtomagazin_routing;Username=avtomagazin;Password=avtomagazin");
+
 builder.Services.AddDbContext<RoutingDbContext>(options =>
-    options.UseNpgsql(builder.Configuration.GetConnectionString("Routing")
-                      ?? "Host=localhost;Port=5432;Database=avtomagazin_routing;Username=avtomagazin;Password=avtomagazin"));
+{
+    if (builder.Environment.IsEnvironment("Testing"))
+    {
+        options.UseInMemoryDatabase("avtomagazin-routing-tests");
+        return;
+    }
+
+    options.UseNpgsql(routingCs);
+});
+
+if (!builder.Environment.IsEnvironment("Testing"))
+{
+    builder.AddAvtomagazinPostgresHealth("postgres", routingCs);
+}
 
 builder.Services.AddSingleton<IGovIntegration, StubGovIntegration>();
 
@@ -100,7 +119,7 @@ app.MapPost("/api/routes", async (CreateRouteRequest request, RoutingDbContext d
     await db.SaveChangesAsync();
     return Results.Created($"/api/routes/{route.Id}", route);
 })
-.RequireAuthorization(policy => policy.RequireRole(Roles.Driver, Roles.Operator, Roles.Admin))
+.RequireAuthorization(policy => policy.RequireRole(Roles.Operator, Roles.Admin))
 .WithName("CreateRoute")
 .WithTags("Routing");
 
@@ -131,7 +150,7 @@ app.MapPost("/api/routes/{routeId:guid}/stops", async (
     await db.SaveChangesAsync();
     return Results.Created($"/api/stops/{stop.SettlementName}", stop);
 })
-.RequireAuthorization(policy => policy.RequireRole(Roles.Driver, Roles.Operator, Roles.Admin))
+.RequireAuthorization(policy => policy.RequireRole(Roles.Operator, Roles.Admin))
 .WithName("AddStop")
 .WithTags("Routing");
 
@@ -160,16 +179,21 @@ app.MapPost("/api/schedule/change", async (
 
     return Results.Ok(stop);
 })
-.RequireAuthorization(policy => policy.RequireRole(Roles.Driver, Roles.Operator, Roles.Admin))
+.RequireAuthorization(policy => policy.RequireRole(Roles.Operator, Roles.Admin))
 .WithName("ChangeSchedule")
 .WithTags("Routing");
 
 app.MapPost("/api/coverage/visit", async (
     CoverageVisitRequest request,
+    ClaimsPrincipal principal,
     RoutingDbContext db,
     IGovIntegration gov,
     IPublishEndpoint bus) =>
 {
+    if (HttpAccess.ForbidVehicleWrite(principal, request.VehicleId) is { } denied)
+    {
+        return denied;
+    }
     var stop = await db.Stops.FirstOrDefaultAsync(s => s.Id == request.StopId);
     if (stop is null)
     {
@@ -210,10 +234,15 @@ app.MapPost("/api/coverage/visit", async (
 app.MapPost("/api/stops/{stopId:guid}/arrived", async (
     Guid stopId,
     DriverArrivedRequest request,
+    ClaimsPrincipal principal,
     RoutingDbContext db,
     IGovIntegration gov,
     IPublishEndpoint bus) =>
 {
+    if (HttpAccess.ForbidVehicleWrite(principal, request.VehicleId) is { } denied)
+    {
+        return denied;
+    }
     var stop = await db.Stops.FirstOrDefaultAsync(s => s.Id == stopId);
     if (stop is null)
     {
@@ -294,8 +323,16 @@ app.MapPost("/api/stops/{stopId:guid}/reports", async (
     };
     db.PresenceReports.Add(report);
     await db.SaveChangesAsync();
-    return Results.Created($"/api/stops/{stop.Id}/reports/{report.Id}", report);
+    return Results.Created($"/api/stops/{stop.Id}/reports/{report.Id}", new
+    {
+        report.Id,
+        report.StopId,
+        report.SettlementName,
+        report.Kind,
+        report.ReportedAtUtc
+    });
 })
+.RequireAuthorization()
 .WithName("ReportStopPresence")
 .WithTags("Routing");
 
@@ -303,7 +340,16 @@ app.MapGet("/api/presence-reports", async (RoutingDbContext db) =>
     await db.PresenceReports.AsNoTracking()
         .OrderByDescending(r => r.ReportedAtUtc)
         .Take(100)
+        .Select(r => new
+        {
+            r.Id,
+            r.StopId,
+            r.SettlementName,
+            r.Kind,
+            r.ReportedAtUtc
+        })
         .ToListAsync())
+.RequireAuthorization(policy => policy.RequireRole(Roles.Driver, Roles.Operator, Roles.Admin))
 .WithName("ListPresenceReports")
 .WithTags("Routing");
 
@@ -317,6 +363,7 @@ app.MapGet("/api/coverage", async (string? regionCode, RoutingDbContext db) =>
 
     return Results.Ok(await query.OrderByDescending(v => v.ArrivedAtUtc).Take(100).ToListAsync());
 })
+.RequireAuthorization(policy => policy.RequireRole(Roles.Driver, Roles.Operator, Roles.Admin))
 .WithName("ListCoverage")
 .WithTags("Coverage");
 

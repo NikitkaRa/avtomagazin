@@ -1,0 +1,219 @@
+@page "/users"
+@rendermode InteractiveServer
+@inject AvtomagazinClient Api
+@inject StaffSession Session
+@inject NavigationManager Nav
+
+<PageTitle>Люди</PageTitle>
+
+<h1>Персонал</h1>
+<p class="lead">Житель входит сразу. Водитель и диспетчер — после вашей кнопки. Водителю назначьте автолавку.</p>
+
+@if (!string.IsNullOrEmpty(_error))
+{
+    <div class="alert">@_error</div>
+}
+
+<h2>Заявки</h2>
+@if (_pending.Count == 0)
+{
+    <p class="muted">Новых заявок нет.</p>
+}
+else
+{
+    @foreach (var u in _pending)
+    {
+        <section class="panel">
+            <strong>@u.DisplayName</strong>
+            <div class="muted">@u.Email · @u.RoleTitle</div>
+            @if (u.Role == "driver")
+            {
+                <label class="muted" style="display:block;margin-top:0.5rem">
+                    Автолавка
+                    <select value="@VanOf(u.Id)" @onchange="e => SetVan(u.Id, e.Value?.ToString())">
+                        <option value="">выберите</option>
+                        @foreach (var van in _vans)
+                        {
+                            <option value="@van.Id">@van.PlateNumber · @van.OperatorName</option>
+                        }
+                    </select>
+                </label>
+            }
+            <div class="row" style="margin-top:0.6rem">
+                <button class="btn" @onclick="() => ApproveAsync(u)">Подтвердить</button>
+                <button class="btn btn-ghost" @onclick="() => RejectAsync(u)">Отклонить</button>
+            </div>
+        </section>
+    }
+}
+
+<h2>Все</h2>
+<table class="table">
+    <thead>
+    <tr>
+        <th>Имя</th>
+        <th>Роль</th>
+        <th>Статус</th>
+        <th></th>
+    </tr>
+    </thead>
+    <tbody>
+    @foreach (var u in _all)
+    {
+        <tr>
+            <td>@u.DisplayName<br /><span class="muted tiny">@u.Email</span></td>
+            <td>@u.RoleTitle</td>
+            <td>@StatusTitle(u.Status)</td>
+            <td>
+                @if (u.Role != "admin" && u.Status == "active")
+                {
+                    <button class="link" @onclick="() => DisableAsync(u)">Отключить</button>
+                }
+                else if (u.Role != "admin" && u.Status == "disabled")
+                {
+                    <button class="link" @onclick="() => ApproveAsync(u)">Включить</button>
+                }
+                @if (u.Role != "admin")
+                {
+                    <button class="link" @onclick="() => ToggleReset(u.Id)">Пароль</button>
+                }
+                @if (_resetId == u.Id)
+                {
+                    <div class="stack" style="margin-top:0.45rem">
+                        <input type="password" @bind="_resetPassword" placeholder="новый, от 8 символов" autocomplete="new-password" />
+                        <button class="btn" @onclick="ResetPasswordAsync">Сбросить</button>
+                    </div>
+                }
+            </td>
+        </tr>
+    }
+    </tbody>
+</table>
+
+@code {
+    private string? _error;
+    private List<AccountDto> _pending = [];
+    private List<AccountDto> _all = [];
+    private List<VehicleDto> _vans = [];
+    private Dictionary<Guid, string> _vanByUser = [];
+    private Guid? _resetId;
+    private string _resetPassword = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!Session.IsAdmin)
+        {
+            Nav.NavigateTo("/");
+            return;
+        }
+
+        await ReloadAsync();
+    }
+
+    private async Task ReloadAsync()
+    {
+        try
+        {
+            _all = await Api.GetUsersAsync();
+            _pending = _all.Where(u => u.Status == "pending").ToList();
+            _vans = await Api.GetVehiclesAsync();
+            foreach (var u in _pending.Where(x => x.Role == "driver" && !_vanByUser.ContainsKey(x.Id)))
+            {
+                _vanByUser[u.Id] = u.VehicleId?.ToString() ?? "";
+            }
+
+            _error = null;
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    private async Task ApproveAsync(AccountDto user)
+    {
+        try
+        {
+            Guid? van = user.VehicleId;
+            if (user.Role == "driver"
+                && _vanByUser.TryGetValue(user.Id, out var raw)
+                && Guid.TryParse(raw, out var picked))
+            {
+                van = picked;
+            }
+
+            await Api.ApproveUserAsync(user.Id, user.Role, van);
+            await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    private async Task RejectAsync(AccountDto user)
+    {
+        try
+        {
+            await Api.RejectUserAsync(user.Id);
+            await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    private async Task DisableAsync(AccountDto user)
+    {
+        try
+        {
+            await Api.DisableUserAsync(user.Id);
+            await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    private void ToggleReset(Guid id)
+    {
+        _resetId = _resetId == id ? null : id;
+        _resetPassword = "";
+    }
+
+    private async Task ResetPasswordAsync()
+    {
+        if (_resetId is not Guid id)
+        {
+            return;
+        }
+
+        try
+        {
+            await Api.ResetUserPasswordAsync(id, _resetPassword);
+            _resetId = null;
+            _resetPassword = "";
+            _error = null;
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    private string VanOf(Guid id)
+        => _vanByUser.GetValueOrDefault(id) ?? "";
+
+    private void SetVan(Guid id, string? value)
+        => _vanByUser[id] = value ?? "";
+
+    private static string StatusTitle(string status) => status switch
+    {
+        "pending" => "ждёт",
+        "active" => "активен",
+        "disabled" => "отключён",
+        _ => status
+    };
+}

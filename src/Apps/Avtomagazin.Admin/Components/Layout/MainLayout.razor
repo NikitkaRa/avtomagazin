@@ -8,7 +8,7 @@
         <header class="topbar">
             <div>
                 <div class="brand">Автомагазин</div>
-                <div class="who">@Session.Name · @(Session.IsDriver ? "рейс" : "диспетчер")</div>
+                <div class="who">@Session.Name · @(Session.IsDriver ? "водитель" : Session.IsAdmin ? "админ" : "диспетчер")</div>
             </div>
             <button class="link" @onclick="Session.SignOut">Выйти</button>
         </header>
@@ -30,6 +30,10 @@
                 <NavLink href="fleet">Парк</NavLink>
                 <NavLink href="coverage">Визиты</NavLink>
                 <NavLink href="notifications">Пуши</NavLink>
+                @if (Session.IsAdmin)
+                {
+                    <NavLink href="users">Люди</NavLink>
+                }
             }
         </nav>
     }
