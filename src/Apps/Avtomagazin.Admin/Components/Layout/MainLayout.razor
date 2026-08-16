@@ -1,6 +1,7 @@
 ﻿@inherits LayoutComponentBase
 @inject StaffSession Session
 @inject NavigationManager Nav
+@inject UiToasts Toasts
 @implements IDisposable
 
 <div class="app @(Session.IsAuthenticated ? "app-in" : "app-out")">
@@ -22,11 +23,11 @@
                 }
                 else
                 {
-                    <NavLink href="/" Match="NavLinkMatch.All">Карта</NavLink>
+                    <NavLink href="/" Match="NavLinkMatch.All">Мониторинг</NavLink>
+                    <NavLink href="map">Карта</NavLink>
                     <NavLink href="routes">Маршруты</NavLink>
                     <NavLink href="fleet">Парк</NavLink>
-                    <NavLink href="coverage">Визиты</NavLink>
-                    <NavLink href="notifications">Пуши</NavLink>
+                    <NavLink href="favorites">Подписки</NavLink>
                     @if (Session.IsAdmin)
                     {
                         <NavLink href="users">Люди</NavLink>
@@ -37,7 +38,7 @@
             <div class="sidenav-foot">
                 <div class="sidenav-user">
                     <span class="sidenav-role">@(Session.IsDriver ? "Водитель" : Session.IsAdmin ? "Админ" : "Диспетчер")</span>
-                    <span class="sidenav-name">@Session.Name</span>
+                    <NavLink href="profile" class="sidenav-name" title="Профиль">@Session.Name</NavLink>
                 </div>
                 <button type="button" class="sidenav-exit" @onclick="Session.SignOut">Выйти</button>
             </div>
@@ -52,7 +53,7 @@
                         <div class="who">
                             <span class="topbar-role">@(Session.IsDriver ? "Водитель" : Session.IsAdmin ? "Админ" : "Диспетчер")</span>
                             <span class="topbar-sep" aria-hidden="true">·</span>
-                            <span>@Session.Name</span>
+                            <NavLink href="profile" class="topbar-name" title="Профиль">@Session.Name</NavLink>
                         </div>
                     </div>
                 </div>
@@ -67,35 +68,40 @@
                 @if (Session.IsDriver)
                 {
                     <NavLink href="/" Match="NavLinkMatch.All">Рейс</NavLink>
+                    <NavLink href="profile">Профиль</NavLink>
                 }
                 else
                 {
-                    <NavLink href="/" Match="NavLinkMatch.All">Карта</NavLink>
+                    <NavLink href="/" Match="NavLinkMatch.All">Мониторинг</NavLink>
+                    <NavLink href="map">Карта</NavLink>
                     <NavLink href="routes">Маршруты</NavLink>
                     <NavLink href="fleet">Парк</NavLink>
-                    <NavLink href="coverage">Визиты</NavLink>
-                    <NavLink href="notifications">Пуши</NavLink>
+                    <NavLink href="favorites">Подписки</NavLink>
                     @if (Session.IsAdmin)
                     {
                         <NavLink href="users">Люди</NavLink>
                     }
+                    <NavLink href="profile">Профиль</NavLink>
                 }
             </nav>
         </div>
     }
     else
     {
-        <main class="main">
-            @Body
-        </main>
+        @Body
     }
+
+    <ToastHost />
 </div>
 
 @code {
+    private bool _wasAuthenticated;
+
     protected override async Task OnInitializedAsync()
     {
         Session.Changed += OnChanged;
         await Session.RestoreAsync();
+        _wasAuthenticated = Session.IsAuthenticated;
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -103,9 +109,27 @@
         if (firstRender)
         {
             await Session.RestoreAsync();
+            _wasAuthenticated = Session.IsAuthenticated;
+            await InvokeAsync(StateHasChanged);
         }
     }
 
-    private void OnChanged() => InvokeAsync(StateHasChanged);
+    private void OnChanged()
+    {
+        var authed = Session.IsAuthenticated;
+        if (_wasAuthenticated && !authed)
+        {
+            if (Session.LastSignOutReason == SignOutReason.Expired)
+            {
+                Toasts.Error("Сессия истекла — войдите снова.");
+            }
+
+            Nav.NavigateTo("/", forceLoad: false);
+        }
+
+        _wasAuthenticated = authed;
+        _ = InvokeAsync(StateHasChanged);
+    }
+
     public void Dispose() => Session.Changed -= OnChanged;
 }

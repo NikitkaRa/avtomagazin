@@ -1,0 +1,218 @@
+@page "/profile"
+@inject AvtomagazinClient Api
+@inject StaffSession Session
+@inject NavigationManager Nav
+@inject UiToasts Toasts
+@using Microsoft.AspNetCore.Components.Forms
+
+<PageTitle>Профиль</PageTitle>
+
+<div class="page-head">
+    <div>
+        <div class="brand">Профиль</div>
+        <div class="who">ФИО, телефон и фото — видны коллегам в операционке.</div>
+    </div>
+</div>
+
+@if (_loading)
+{
+    <p class="muted">Загрузка…</p>
+}
+else
+{
+    <section class="panel">
+        <div class="photo-row" style="margin-bottom: 1rem;">
+            @if (!string.IsNullOrEmpty(_photoUrl))
+            {
+                <img class="fleet-thumb" src="@_photoUrl" alt="" />
+            }
+            else
+            {
+                <div class="fleet-thumb fleet-thumb-empty" aria-hidden="true"></div>
+            }
+            <div class="photo-actions">
+                <label class="stop-photo-add">
+                    @(_photoUrl is null ? "Фото" : "Заменить")
+                    <InputFile class="visually-hidden" OnChange="OnPhotoSelected" accept="image/jpeg,image/png,image/webp" />
+                </label>
+                @if (!string.IsNullOrEmpty(_photoUrl) || _photoDataUrl is not null)
+                {
+                    <button type="button" class="stop-photo-clear" @onclick="ClearPhoto">Убрать</button>
+                }
+            </div>
+        </div>
+
+        <div class="form-grid">
+            <label class="field">
+                <span>Фамилия</span>
+                <input @bind="_lastName" autocomplete="family-name" />
+            </label>
+            <label class="field">
+                <span>Имя</span>
+                <input @bind="_firstName" autocomplete="given-name" />
+            </label>
+            <label class="field">
+                <span>Отчество</span>
+                <input @bind="_middleName" autocomplete="additional-name" />
+            </label>
+            <label class="field">
+                <span>Телефон</span>
+                <input @bind="_phone" type="tel" autocomplete="tel" placeholder="+375…" />
+            </label>
+            <label class="field">
+                <span>Email</span>
+                <input value="@_email" disabled />
+            </label>
+        </div>
+
+        <div class="row" style="margin-top: 1rem;">
+            <button type="button" class="btn" disabled="@_busy" @onclick="SaveAsync">Сохранить</button>
+        </div>
+    </section>
+}
+
+@code {
+    private bool _loading = true;
+    private bool _busy;
+    private bool _loaded;
+    private string _email = "";
+    private string _lastName = "";
+    private string _firstName = "";
+    private string _middleName = "";
+    private string _phone = "";
+    private string? _photoUrl;
+    private string? _photoDataUrl;
+    private bool _clearPhoto;
+    private bool _photoDirty;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _loaded)
+        {
+            return;
+        }
+
+        await Session.RestoreAsync();
+        if (!Session.IsAuthenticated)
+        {
+            Nav.NavigateTo("/");
+            return;
+        }
+
+        _loaded = true;
+        try
+        {
+            var me = await Api.GetProfileAsync();
+            if (me is null)
+            {
+                Toasts.Error("Не удалось загрузить профиль");
+                return;
+            }
+
+            _email = me.Email;
+            _lastName = me.LastName ?? "";
+            _firstName = me.FirstName ?? "";
+            _middleName = me.MiddleName ?? "";
+            _phone = me.Phone ?? "";
+            _photoUrl = me.PhotoUrl;
+            if (string.IsNullOrWhiteSpace(_lastName) && string.IsNullOrWhiteSpace(_firstName)
+                && !string.IsNullOrWhiteSpace(me.DisplayName ?? me.Name))
+            {
+                var parts = (me.DisplayName ?? me.Name)!.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length >= 1) _lastName = parts[0];
+                if (parts.Length >= 2) _firstName = parts[1];
+                if (parts.Length >= 3) _middleName = string.Join(' ', parts.Skip(2));
+            }
+        }
+        catch (SessionExpiredException)
+        {
+        }
+        catch (Exception ex)
+        {
+            Toasts.Error(ex.Message);
+        }
+        finally
+        {
+            _loading = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task OnPhotoSelected(InputFileChangeEventArgs e)
+    {
+        try
+        {
+            var file = e.File;
+            if (file.Size > 400_000)
+            {
+                Toasts.Error("Фото больше 400 КБ");
+                return;
+            }
+
+            await using var stream = file.OpenReadStream(maxAllowedSize: 400_000);
+            using var ms = new MemoryStream();
+            await stream.CopyToAsync(ms);
+            var b64 = Convert.ToBase64String(ms.ToArray());
+            var mime = string.IsNullOrWhiteSpace(file.ContentType) ? "image/jpeg" : file.ContentType;
+            _photoDataUrl = $"data:{mime};base64,{b64}";
+            _photoUrl = _photoDataUrl;
+            _clearPhoto = false;
+            _photoDirty = true;
+        }
+        catch (Exception ex)
+        {
+            Toasts.Error(ex.Message);
+        }
+    }
+
+    private void ClearPhoto()
+    {
+        _photoUrl = null;
+        _photoDataUrl = null;
+        _clearPhoto = true;
+        _photoDirty = true;
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_busy)
+        {
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            var saved = await Api.UpdateProfileAsync(new UpdateProfileRequest(
+                LastName: _lastName,
+                FirstName: _firstName,
+                MiddleName: _middleName,
+                Phone: _phone,
+                PhotoDataUrl: _photoDirty && !_clearPhoto ? _photoDataUrl : null,
+                ClearPhoto: _clearPhoto));
+            if (saved is null)
+            {
+                Toasts.Error("Не удалось сохранить");
+                return;
+            }
+
+            _photoUrl = saved.PhotoUrl;
+            _photoDataUrl = null;
+            _clearPhoto = false;
+            _photoDirty = false;
+            Session.RefreshProfile(saved.DisplayName ?? saved.Name);
+            Toasts.Success("Профиль сохранён");
+        }
+        catch (SessionExpiredException)
+        {
+        }
+        catch (Exception ex)
+        {
+            Toasts.Error(ex.Message);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

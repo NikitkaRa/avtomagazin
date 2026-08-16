@@ -1,0 +1,21 @@
+@inject UiToasts Toasts
+@implements IDisposable
+
+@if (Toasts.Items.Count > 0)
+{
+    <div class="toast-stack" aria-live="polite" aria-relevant="additions">
+        @foreach (var item in Toasts.Items)
+        {
+            <div class="toast toast-@item.Kind.ToString().ToLowerInvariant()" role="status">
+                <p>@item.Message</p>
+                <button type="button" class="toast-dismiss" aria-label="Закрыть" @onclick="() => Toasts.Dismiss(item.Id)">×</button>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    protected override void OnInitialized() => Toasts.Changed += OnChanged;
+    private void OnChanged() => InvokeAsync(StateHasChanged);
+    public void Dispose() => Toasts.Changed -= OnChanged;
+}

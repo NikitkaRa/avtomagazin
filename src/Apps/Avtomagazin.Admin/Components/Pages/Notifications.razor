@@ -1,74 +1,76 @@
 @page "/notifications"
+@page "/favorites"
 @inject AvtomagazinClient Api
 @inject StaffSession Session
 @inject NavigationManager Nav
+@inject UiToasts Toasts
+@inject IJSRuntime Js
+@using Microsoft.JSInterop
+@implements IAsyncDisposable
 
-<PageTitle>Уведомления</PageTitle>
+<PageTitle>Подписки</PageTitle>
 
-<h1>Подписки жителей</h1>
-<p class="lead">Сколько человек держат пункт в избранном — там есть кому слать пуш и куда есть смысл ехать.</p>
-
-<table class="table">
-    <thead>
-    <tr>
-        <th>Пункт</th>
-        <th>Подписчиков</th>
-    </tr>
-    </thead>
-    <tbody>
-    @foreach (var s in _stats)
-    {
-        <tr>
-            <td>@s.SettlementName</td>
-            <td>@s.SubscriberCount</td>
-        </tr>
-    }
-    </tbody>
-</table>
-
-<h1>Лог пушей</h1>
-
-<div class="form-grid">
-    <input @bind="_settlement" placeholder="Деревня" />
-    <button class="btn" @onclick="ReloadAsync">Обновить</button>
+<div class="page-head">
+    <div>
+        <div class="brand">Избранное жителей</div>
+        <div class="who">Все остановки на карте. Цвет — сколько людей добавили пункт в избранное (0–100).</div>
+    </div>
+    <a class="btn btn-ghost" href="/">К мониторингу</a>
 </div>
 
-@if (!string.IsNullOrEmpty(_error))
+@if (_loading)
 {
-    <div class="alert">@_error</div>
+    <p class="muted">Загрузка…</p>
 }
 else
 {
-    <table class="table">
-        <thead>
-        <tr>
-            <th>Когда</th>
-            <th>Пункт</th>
-            <th>Заголовок</th>
-            <th>Текст</th>
-            <th>Получателей</th>
-        </tr>
-        </thead>
-        <tbody>
-        @foreach (var n in _items)
-        {
-            <tr>
-                <td>@n.SentAtUtc.ToLocalTime().ToString("dd.MM HH:mm:ss")</td>
-                <td>@n.SettlementName</td>
-                <td>@n.Title</td>
-                <td>@n.Body</td>
-                <td>@n.RecipientCount</td>
-            </tr>
-        }
-        </tbody>
-    </table>
+    <div class="map-stage fav-map-stage">
+        <div class="map map-hero" id="favorites-map"></div>
+        <div class="fav-legend" aria-label="Легенда подписок">
+            <span class="fav-legend-label">0</span>
+            <div class="fav-legend-bar" title="Подписчиков: от 0 до 100+"></div>
+            <span class="fav-legend-label">100+</span>
+        </div>
+    </div>
+
+    @if (_stats.Count == 0)
+    {
+        <p class="empty">Пока никто не добавил остановки в избранное.</p>
+    }
+    else
+    {
+        <section class="block">
+            <header class="block-head">
+                <h2>Топ по подпискам</h2>
+                <span class="block-meta">@_stats.Count</span>
+            </header>
+            <ul class="feed">
+                @foreach (var s in _stats.OrderByDescending(x => x.SubscriberCount).Take(40))
+                {
+                    <li class="feed-row">
+                        <div>
+                            <strong>@s.SettlementName</strong>
+                            <span class="feed-sub">в избранном</span>
+                        </div>
+                        <div class="feed-side">
+                            <span class="block-meta">@s.SubscriberCount</span>
+                        </div>
+                    </li>
+                }
+            </ul>
+        </section>
+    }
 }
 
 @code {
-    private string? _error;
-    private string _settlement = "";
-    private List<NotificationDto> _items = [];
+    private const int ScaleMin = 0;
+    private const int ScaleMax = 100;
+
+    private bool _loading = true;
+    private bool _mapReady;
     private List<FavoriteStatsDto> _stats = [];
+    private List<object> _points = [];
+    private IJSObjectReference? _map;
 
     protected override async Task OnInitializedAsync()
     {
@@ -79,20 +81,104 @@ else
             return;
         }
 
-        await ReloadAsync();
-    }
-
-    private async Task ReloadAsync()
-    {
         try
         {
-            _items = await Api.GetNotificationsAsync(string.IsNullOrWhiteSpace(_settlement) ? null : _settlement);
-            _stats = await Api.GetFavoriteStatsAsync();
-            _error = null;
+            var routesTask = Api.GetRoutesAsync();
+            var statsTask = Api.GetFavoriteStatsAsync();
+            await Task.WhenAll(routesTask, statsTask);
+            var routes = await routesTask;
+            _stats = await statsTask;
+
+            var byStop = _stats.ToDictionary(s => s.StopId, s => s.SubscriberCount);
+            var byName = _stats
+                .GroupBy(s => s.SettlementName, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(g => g.Key, g => g.Max(x => x.SubscriberCount), StringComparer.OrdinalIgnoreCase);
+
+            var seen = new HashSet<Guid>();
+            _points = [];
+            foreach (var stop in routes.SelectMany(r => r.Stops ?? []))
+            {
+                if (!seen.Add(stop.Id))
+                {
+                    continue;
+                }
+
+                var count = 0;
+                if (byStop.TryGetValue(stop.Id, out var byId))
+                {
+                    count = byId;
+                }
+                else if (byName.TryGetValue(stop.SettlementName, out var named))
+                {
+                    count = named;
+                }
+
+                _points.Add(new
+                {
+                    lat = stop.Latitude,
+                    lng = stop.Longitude,
+                    count,
+                    name = stop.SettlementName
+                });
+            }
+        }
+        catch (SessionExpiredException)
+        {
         }
         catch (Exception ex)
         {
-            _error = ex.Message;
+            Toasts.Error(ex.Message);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_loading || _mapReady)
+        {
+            return;
+        }
+
+        try
+        {
+            _map ??= await Js.InvokeAsync<IJSObjectReference>("import", "./js/map.js");
+            await _map.InvokeAsync<bool>("init", "favorites-map", 53.55, 26.4, 7);
+            if (_points.Count > 0)
+            {
+                await _map.InvokeVoidAsync(
+                    "setFavoriteHeat",
+                    "favorites-map",
+                    _points,
+                    new { scaleMin = ScaleMin, scaleMax = ScaleMax, fit = true });
+            }
+
+            _mapReady = true;
+        }
+        catch (JSDisconnectedException)
+        {
+        }
+        catch (Exception ex)
+        {
+            Toasts.Error(ex.Message);
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_map is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await _map.DisposeAsync();
+        }
+        catch (JSDisconnectedException)
+        {
         }
     }
 }

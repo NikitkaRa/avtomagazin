@@ -57,9 +57,9 @@ public sealed class AppFlavor
     public static AppFlavor Staff { get; } = new()
     {
         Title = "Автомагазин · персонал",
-        Subtitle = "Водитель — в автолавке. Диспетчер — в офисе. Админ подтверждает заявки.",
+        Subtitle = "Водитель и продавец — в автолавке. Диспетчер — в офисе. Админ подтверждает заявки.",
         AllowRegister = true,
-        AllowedRoles = new HashSet<string>(StringComparer.Ordinal) { "driver", "operator", "admin" }
+        AllowedRoles = new HashSet<string>(StringComparer.Ordinal) { "driver", "seller", "operator", "admin" }
     };
 }
 

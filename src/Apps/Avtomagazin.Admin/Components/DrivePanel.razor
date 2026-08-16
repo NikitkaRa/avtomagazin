@@ -1,6 +1,7 @@
 @inject AvtomagazinClient Api
 @inject StaffSession Session
 @inject IJSRuntime Js
+@using Microsoft.JSInterop
 @implements IAsyncDisposable
 
 <section class="sheet">
@@ -266,7 +267,13 @@
         _poll?.Dispose();
         if (_geo is not null && _watchId != 0)
         {
-            await _geo.InvokeVoidAsync("stop", _watchId);
+            try
+            {
+                await _geo.InvokeVoidAsync("stop", _watchId);
+            }
+            catch (JSDisconnectedException)
+            {
+            }
         }
 
         _self?.Dispose();

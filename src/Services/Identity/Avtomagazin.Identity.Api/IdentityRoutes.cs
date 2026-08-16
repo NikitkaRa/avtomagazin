@@ -2,6 +2,7 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using Avtomagazin.Contracts;
 using Avtomagazin.Identity.Api.Data;
+using Avtomagazin.ServiceDefaults;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -24,7 +25,11 @@ internal static class IdentityRoutes
             .RequireRateLimiting("auth")
             .WithName("Login")
             .WithTags("Auth");
-        app.MapGet("/api/auth/me", Me).RequireAuthorization().WithName("Me").WithTags("Auth");
+        app.MapGet("/api/auth/me", MeAsync).RequireAuthorization().WithName("Me").WithTags("Auth");
+        app.MapPatch("/api/auth/profile", UpdateProfileAsync)
+            .RequireAuthorization()
+            .WithName("UpdateProfile")
+            .WithTags("Auth");
         app.MapGet("/api/internal/users/{id:guid}/session", SessionAsync)
             .WithName("InternalSession")
             .WithTags("Internal");
@@ -32,6 +37,14 @@ internal static class IdentityRoutes
         app.MapGet("/api/users", ListUsersAsync)
             .RequireAuthorization(p => p.RequireRole(Roles.Admin))
             .WithName("ListUsers")
+            .WithTags("Users");
+        app.MapGet("/api/staff", ListStaffAsync)
+            .RequireAuthorization(p => p.RequireRole(Roles.Admin, Roles.Operator))
+            .WithName("ListStaff")
+            .WithTags("Users");
+        app.MapPost("/api/users/{id:guid}/assign-vehicle", AssignVehicleAsync)
+            .RequireAuthorization(p => p.RequireRole(Roles.Admin, Roles.Operator))
+            .WithName("AssignVehicle")
             .WithTags("Users");
         app.MapPost("/api/users/{id:guid}/approve", ApproveAsync)
             .RequireAuthorization(p => p.RequireRole(Roles.Admin))
@@ -84,9 +97,9 @@ internal static class IdentityRoutes
         if (client == AuthClients.Staff)
         {
             role = (request.StaffRole ?? "").Trim().ToLowerInvariant();
-            if (role is not (Roles.Driver or Roles.Operator))
+            if (role is not (Roles.Driver or Roles.Seller or Roles.Operator))
             {
-                return Results.BadRequest(new { error = "В приложении персонала укажи роль: водитель или диспетчер" });
+                return Results.BadRequest(new { error = "В приложении персонала укажи роль: водитель, продавец или диспетчер" });
             }
 
             status = UserStatuses.Pending;
@@ -196,23 +209,108 @@ internal static class IdentityRoutes
         return Results.Ok(AuthTokens.Payload(user, config, env));
     }
 
-    private static IResult Me(ClaimsPrincipal principal)
+    private static async Task<IResult> MeAsync(ClaimsPrincipal principal, IdentityDbContext db)
     {
-        if (principal.Identity?.IsAuthenticated != true)
+        if (principal.Identity?.IsAuthenticated != true || principal.UserId() is not Guid id)
         {
             return Results.Unauthorized();
         }
 
-        return Results.Ok(new
+        var user = await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == id);
+        if (user is null)
         {
-            id = principal.UserId(),
-            email = principal.FindFirstValue(JwtRegisteredClaimNames.Email)
-                    ?? principal.FindFirstValue(ClaimTypes.Email),
-            role = principal.Role(),
-            name = principal.FindFirstValue("name"),
-            vehicleId = principal.AssignedVehicleId()
-        });
+            return Results.Unauthorized();
+        }
+
+        return Results.Ok(ProfilePayload(user));
     }
+
+    private static async Task<IResult> UpdateProfileAsync(
+        [FromBody] UpdateProfileRequest request,
+        ClaimsPrincipal principal,
+        IdentityDbContext db,
+        IObjectStorage storage)
+    {
+        if (principal.UserId() is not Guid id)
+        {
+            return Results.Unauthorized();
+        }
+
+        var user = await db.Users.FirstOrDefaultAsync(u => u.Id == id);
+        if (user is null || user.Status != UserStatuses.Active)
+        {
+            return Results.Unauthorized();
+        }
+
+        if (request.LastName is not null)
+        {
+            user.LastName = TrimOrNull(request.LastName);
+        }
+
+        if (request.FirstName is not null)
+        {
+            user.FirstName = TrimOrNull(request.FirstName);
+        }
+
+        if (request.MiddleName is not null)
+        {
+            user.MiddleName = TrimOrNull(request.MiddleName);
+        }
+
+        if (request.Phone is not null)
+        {
+            user.Phone = TrimOrNull(request.Phone);
+        }
+
+        if (request.DisplayName is not null && !string.IsNullOrWhiteSpace(request.DisplayName))
+        {
+            user.DisplayName = request.DisplayName.Trim();
+        }
+
+        user.SyncDisplayName();
+        if (string.IsNullOrWhiteSpace(user.DisplayName))
+        {
+            return Results.BadRequest(new { error = "Укажите хотя бы фамилию или имя" });
+        }
+
+        var (photo, photoError) = await MediaPhotos.StoreAsync(
+            storage,
+            "avatars",
+            request.ClearPhoto == true ? null : request.PhotoDataUrl,
+            user.PhotoUrl,
+            clear: request.ClearPhoto == true);
+        if (photoError is not null)
+        {
+            return Results.BadRequest(new { error = photoError });
+        }
+
+        if (request.ClearPhoto == true || request.PhotoDataUrl is not null)
+        {
+            user.PhotoUrl = photo;
+        }
+
+        await db.SaveChangesAsync();
+        return Results.Ok(ProfilePayload(user));
+    }
+
+    private static object ProfilePayload(AppUser user) => new
+    {
+        id = user.Id,
+        email = user.Email,
+        role = user.Role,
+        name = user.DisplayName,
+        displayName = user.DisplayName,
+        lastName = user.LastName,
+        firstName = user.FirstName,
+        middleName = user.MiddleName,
+        phone = user.Phone,
+        photoUrl = user.PhotoUrl,
+        vehicleId = user.VehicleId,
+        status = user.Status
+    };
+
+    private static string? TrimOrNull(string? value)
+        => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
     private static async Task<IResult> SessionAsync(Guid id, HttpContext http, IdentityDbContext db, IConfiguration config)
     {
@@ -262,6 +360,84 @@ internal static class IdentityRoutes
         return Results.Ok(items);
     }
 
+    private static async Task<IResult> ListStaffAsync(IdentityDbContext db)
+    {
+        var items = await db.Users.AsNoTracking()
+            .Where(u => u.Status == UserStatuses.Active
+                        && (u.Role == Roles.Driver
+                            || u.Role == Roles.Seller
+                            || u.Role == Roles.Operator
+                            || u.Role == Roles.Admin))
+            .OrderBy(u => u.DisplayName)
+            .Select(u => new
+            {
+                u.Id,
+                u.Email,
+                u.DisplayName,
+                u.Role,
+                roleTitle = Roles.Title(u.Role),
+                u.Status,
+                u.VehicleId
+            })
+            .ToListAsync();
+
+        return Results.Ok(items);
+    }
+
+    private static async Task<IResult> AssignVehicleAsync(
+        Guid id,
+        [FromBody] AssignVehicleRequest? request,
+        IdentityDbContext db)
+    {
+        var user = await db.Users.FirstOrDefaultAsync(u => u.Id == id);
+        if (user is null)
+        {
+            return Results.NotFound();
+        }
+
+        if (user.Status != UserStatuses.Active)
+        {
+            return Results.BadRequest(new { error = "Можно назначать только активных сотрудников" });
+        }
+
+        if (user.Role is not (Roles.Driver or Roles.Seller))
+        {
+            return Results.BadRequest(new { error = "На автолавку назначают водителя или продавца" });
+        }
+
+        var vehicleId = request?.VehicleId is Guid van && van != Guid.Empty ? van : (Guid?)null;
+        if (user.Role == Roles.Driver && vehicleId is null)
+        {
+            return Results.BadRequest(new { error = "Водителю нужна автолавка" });
+        }
+
+        if (vehicleId is Guid assigned)
+        {
+            var previous = await db.Users
+                .Where(u => u.VehicleId == assigned && u.Id != id && u.Role == user.Role)
+                .ToListAsync();
+            foreach (var other in previous)
+            {
+                other.VehicleId = null;
+                other.TokenVersion++;
+            }
+        }
+
+        user.VehicleId = vehicleId;
+        user.TokenVersion++;
+        await db.SaveChangesAsync();
+        return Results.Ok(new
+        {
+            user.Id,
+            user.Email,
+            user.DisplayName,
+            user.Role,
+            roleTitle = Roles.Title(user.Role),
+            user.Status,
+            user.VehicleId
+        });
+    }
+
     private static async Task<IResult> ApproveAsync(
         Guid id,
         [FromBody] ApproveUserRequest? request,
@@ -279,9 +455,9 @@ internal static class IdentityRoutes
         }
 
         var role = (request?.Role ?? user.Role).Trim().ToLowerInvariant();
-        if (role is not (Roles.Driver or Roles.Operator or Roles.Resident))
+        if (role is not (Roles.Driver or Roles.Seller or Roles.Operator or Roles.Resident))
         {
-            return Results.BadRequest(new { error = "Роль: resident, driver или operator" });
+            return Results.BadRequest(new { error = "Роль: resident, driver, seller или operator" });
         }
 
         if (request?.VehicleId is Guid van)
@@ -433,6 +609,17 @@ internal sealed record RegisterRequest(
     string? StaffRole);
 
 internal sealed record ApproveUserRequest(string? Role, Guid? VehicleId);
+
+internal sealed record AssignVehicleRequest(Guid? VehicleId);
+
+internal sealed record UpdateProfileRequest(
+    string? DisplayName = null,
+    string? LastName = null,
+    string? FirstName = null,
+    string? MiddleName = null,
+    string? Phone = null,
+    string? PhotoDataUrl = null,
+    bool? ClearPhoto = null);
 
 internal sealed record ChangePasswordRequest(string Current, string Next);
 

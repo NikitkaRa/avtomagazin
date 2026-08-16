@@ -1,0 +1,148 @@
+@page "/map"
+@inject AvtomagazinClient Api
+@inject StaffSession Session
+@inject NavigationManager Nav
+@inject IJSRuntime Js
+@using Microsoft.JSInterop
+@implements IAsyncDisposable
+
+<PageTitle>Карта</PageTitle>
+
+<div class="page-head">
+    <div>
+        <div class="brand">Карта</div>
+        <div class="who">Живые позиции автолавок. Обновление каждые несколько секунд.</div>
+    </div>
+</div>
+
+<div class="map-stage">
+    <div class="map map-hero" id="staff-live-map"></div>
+    <div class="map-legend">
+        <span><i class="dot live"></i> эфир</span>
+        <span><i class="dot stale"></i> последний GPS</span>
+        <span class="muted">в эфире: @_liveCount · с GPS: @_signalCount</span>
+    </div>
+</div>
+
+@code {
+    private List<VehicleDto> _vans = [];
+    private IJSObjectReference? _map;
+    private CancellationTokenSource? _poll;
+    private bool _mapReady;
+
+    private int _liveCount => _vans.Count(IsLive);
+    private int _signalCount => _vans.Count(v => v.LastLatitude is not null);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Session.RestoreAsync();
+        if (!Session.IsAuthenticated || Session.IsDriver)
+        {
+            Nav.NavigateTo("/");
+            return;
+        }
+
+        await ReloadAsync();
+        _poll = new CancellationTokenSource();
+        _ = LoopAsync(_poll.Token);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _mapReady)
+        {
+            return;
+        }
+
+        try
+        {
+            _map = await Js.InvokeAsync<IJSObjectReference>("import", "./js/map.js");
+            await _map.InvokeAsync<bool>("init", "staff-live-map", 53.55, 26.4, 7);
+            _mapReady = true;
+            await DrawAsync();
+        }
+        catch (JSDisconnectedException)
+        {
+        }
+        catch
+        {
+        }
+    }
+
+    private async Task LoopAsync(CancellationToken ct)
+    {
+        while (!ct.IsCancellationRequested)
+        {
+            try
+            {
+                await ReloadAsync();
+                await InvokeAsync(async () =>
+                {
+                    await DrawAsync();
+                    StateHasChanged();
+                });
+            }
+            catch
+            {
+            }
+
+            await Task.Delay(5000, ct);
+        }
+    }
+
+    private async Task ReloadAsync()
+    {
+        try
+        {
+            _vans = await Api.GetVehiclesAsync();
+        }
+        catch
+        {
+        }
+    }
+
+    private async Task DrawAsync()
+    {
+        if (_map is null || !_mapReady)
+        {
+            return;
+        }
+
+        var markers = new List<object>();
+        foreach (var van in _vans.Where(v => v.LastLatitude is not null))
+        {
+            var live = IsLive(van);
+            markers.Add(new
+            {
+                lat = van.LastLatitude,
+                lng = van.LastLongitude,
+                kind = live ? "van" : "van-stale",
+                emoji = "",
+                popup = $"<b>{van.PlateNumber}</b><br/>{van.OperatorName}<br/>{(live ? "в эфире" : "последний GPS")}"
+            });
+        }
+
+        await _map.InvokeVoidAsync("setMarkers", "staff-live-map", markers);
+    }
+
+    private static bool IsLive(VehicleDto van)
+        => string.Equals(van.LastSource, "driver-app", StringComparison.OrdinalIgnoreCase);
+
+    public async ValueTask DisposeAsync()
+    {
+        _poll?.Cancel();
+        _poll?.Dispose();
+        if (_map is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await _map.DisposeAsync();
+        }
+        catch (JSDisconnectedException)
+        {
+        }
+    }
+}

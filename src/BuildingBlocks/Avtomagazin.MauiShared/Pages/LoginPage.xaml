@@ -40,7 +40,8 @@
 
             <VerticalStackLayout x:Name="StaffRoleBlock" IsVisible="False" Spacing="8" Margin="0,4,0,4">
                 <Label Text="Кто вы" TextColor="#A7B8AD" />
-                <Button x:Name="DriverRoleButton" Text="Водитель — продаю в автолавке" Clicked="OnPickDriver" BackgroundColor="#1B3328" TextColor="#F3F7F3" HeightRequest="48" />
+                <Button x:Name="DriverRoleButton" Text="Водитель — веду автолавку" Clicked="OnPickDriver" BackgroundColor="#1B3328" TextColor="#F3F7F3" HeightRequest="48" />
+                <Button x:Name="SellerRoleButton" Text="Продавец — торгую в салоне" Clicked="OnPickSeller" BackgroundColor="#1B3328" TextColor="#F3F7F3" HeightRequest="48" />
                 <Button x:Name="DispatcherRoleButton" Text="Диспетчер — сижу в офисе" Clicked="OnPickDispatcher" BackgroundColor="#1B3328" TextColor="#F3F7F3" HeightRequest="48" />
             </VerticalStackLayout>
             <Button Text="Войти"

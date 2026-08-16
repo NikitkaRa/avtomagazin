@@ -27,6 +27,40 @@ services:
       retries: 10
     restart: unless-stopped
 
+  minio:
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-avtomagazin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-${POSTGRES_PASSWORD}}
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+    restart: unless-stopped
+
+  minio-init:
+    image: minio/mc:RELEASE.2025-04-16T18-13-26Z
+    depends_on:
+      - minio
+    entrypoint: >
+      /bin/sh -c "
+      sleep 3;
+      mc alias set local http://minio:9000 $${MINIO_ROOT_USER:-avtomagazin} $${MINIO_ROOT_PASSWORD:-$$POSTGRES_PASSWORD};
+      mc mb -p local/avtomagazin || true;
+      mc anonymous set download local/avtomagazin;
+      exit 0;
+      "
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-avtomagazin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-${POSTGRES_PASSWORD}}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    restart: "no"
+
   identity:
     build:
       context: .
@@ -45,11 +79,18 @@ services:
       Seed__DemoUsers: "false"
       Bootstrap__AdminEmail: ${ADMIN_EMAIL}
       Bootstrap__AdminPassword: ${ADMIN_PASSWORD}
+      Storage__Endpoint: http://minio:9000
+      Storage__PublicBaseUrl: ${PUBLIC_MEDIA_BASE_URL:-http://127.0.0.1:9000}
+      Storage__Bucket: avtomagazin
+      Storage__AccessKey: ${MINIO_ROOT_USER:-avtomagazin}
+      Storage__SecretKey: ${MINIO_ROOT_PASSWORD:-${POSTGRES_PASSWORD}}
     depends_on:
       postgres:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+      minio:
+        condition: service_started
     restart: unless-stopped
 
   fleet:
@@ -69,11 +110,18 @@ services:
       RabbitMq__Username: avtomagazin
       RabbitMq__Password: ${POSTGRES_PASSWORD}
       Gps__Provider: None
+      Storage__Endpoint: http://minio:9000
+      Storage__PublicBaseUrl: ${PUBLIC_MEDIA_BASE_URL:-http://127.0.0.1:9000}
+      Storage__Bucket: avtomagazin
+      Storage__AccessKey: ${MINIO_ROOT_USER:-avtomagazin}
+      Storage__SecretKey: ${MINIO_ROOT_PASSWORD:-${POSTGRES_PASSWORD}}
     depends_on:
       postgres:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+      minio:
+        condition: service_started
     restart: unless-stopped
 
   routing:
@@ -92,11 +140,18 @@ services:
       RabbitMq__Host: rabbitmq
       RabbitMq__Username: avtomagazin
       RabbitMq__Password: ${POSTGRES_PASSWORD}
+      Storage__Endpoint: http://minio:9000
+      Storage__PublicBaseUrl: ${PUBLIC_MEDIA_BASE_URL:-http://127.0.0.1:9000}
+      Storage__Bucket: avtomagazin
+      Storage__AccessKey: ${MINIO_ROOT_USER:-avtomagazin}
+      Storage__SecretKey: ${MINIO_ROOT_PASSWORD:-${POSTGRES_PASSWORD}}
     depends_on:
       postgres:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+      minio:
+        condition: service_started
     restart: unless-stopped
 
   notifications:
@@ -160,3 +215,4 @@ services:
 
 volumes:
   pgdata:
+  minio-data:

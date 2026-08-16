@@ -2,6 +2,7 @@
 @inject AvtomagazinClient Api
 @inject StaffSession Session
 @inject NavigationManager Nav
+@inject UiToasts Toasts
 
 <PageTitle>Маршруты</PageTitle>
 
@@ -47,9 +48,10 @@ else
                         }
                     </span>
                 </div>
-                <div class="feed-side">
-                    <a class="btn btn-ghost" href="@($"routes/{route.Id}")">Открыть</a>
-                </div>
+                    <div class="feed-side">
+                        <a class="btn btn-ghost" href="@($"routes/{route.Id}")">Открыть</a>
+                        <button type="button" class="btn btn-ghost" disabled="@_busy" @onclick="() => DeleteAsync(route)">Удалить</button>
+                    </div>
             </li>
         }
     </ul>
@@ -57,6 +59,7 @@ else
 
 @code {
     private bool _loading = true;
+    private bool _busy;
     private string? _error;
     private List<RouteDto> _routes = [];
     private List<VehicleDto> _vehicles = [];
@@ -89,6 +92,42 @@ else
         finally
         {
             _loading = false;
+        }
+    }
+
+    private async Task DeleteAsync(RouteDto route)
+    {
+        if (_busy)
+        {
+            return;
+        }
+
+        _busy = true;
+        _error = null;
+        try
+        {
+            await Session.RestoreAsync();
+            if (string.IsNullOrEmpty(Session.AccessToken))
+            {
+                _error = "Сессия истекла — войдите снова.";
+                return;
+            }
+
+            await Api.DeleteRouteAsync(route.Id);
+            _routes.RemoveAll(r => r.Id == route.Id);
+            Toasts.Success("Маршрут удалён");
+        }
+        catch (SessionExpiredException)
+        {
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+            Toasts.Error(ex.Message);
+        }
+        finally
+        {
+            _busy = false;
         }
     }
 

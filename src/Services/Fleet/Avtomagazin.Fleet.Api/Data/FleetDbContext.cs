@@ -21,6 +21,9 @@ public sealed class FleetDbContext(DbContextOptions<FleetDbContext> options) : D
             e.Property(x => x.SellerName).HasMaxLength(120);
             e.Property(x => x.SellerPhone).HasMaxLength(32);
             e.Property(x => x.OperatorPhone).HasMaxLength(32);
+            e.Property(x => x.PhotoDataUrl);
+            e.Property(x => x.DriverUserId);
+            e.Property(x => x.SellerUserId);
         });
 
         modelBuilder.Entity<VehiclePosition>(e =>
@@ -42,6 +45,9 @@ public sealed class Vehicle
     public string? SellerName { get; set; }
     public string? SellerPhone { get; set; }
     public string? OperatorPhone { get; set; }
+    public Guid? DriverUserId { get; set; }
+    public Guid? SellerUserId { get; set; }
+    public string? PhotoDataUrl { get; set; }
     public bool IsActive { get; set; } = true;
     public double? LastLatitude { get; set; }
     public double? LastLongitude { get; set; }

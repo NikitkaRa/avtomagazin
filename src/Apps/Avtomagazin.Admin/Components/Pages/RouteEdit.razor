@@ -3,7 +3,10 @@
 @inject AvtomagazinClient Api
 @inject StaffSession Session
 @inject NavigationManager Nav
+@inject UiToasts Toasts
 @inject IJSRuntime Js
+@using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.JSInterop
 @implements IAsyncDisposable
 
 <PageTitle>@(IsNew ? "Новый маршрут" : "Редактор маршрута")</PageTitle>
@@ -11,40 +14,49 @@
 <div class="page-head">
     <div>
         <div class="brand">@(IsNew ? "Новый маршрут" : "Редактор")</div>
-        <div class="who">Клик — новая точка. Перетащите номер, чтобы сдвинуть. Сохраните кнопкой.</div>
+        <div class="who">Точки на карте + время прибытия по каждой остановке. Сохраните кнопкой.</div>
     </div>
-    <a class="btn btn-ghost" href="routes">К списку</a>
+    <div class="page-head-actions">
+        <a class="btn btn-ghost" href="routes">К списку</a>
+        @if (!IsNew)
+        {
+            <button type="button" class="btn btn-ghost btn-danger-text" disabled="@_busy" @onclick="DeleteAsync">Удалить маршрут</button>
+        }
+    </div>
 </div>
 
 @if (!string.IsNullOrEmpty(_error))
 {
-    <div class="alert">@_error</div>
-}
-@if (!string.IsNullOrEmpty(_ok))
-{
-    <div class="panel ok">@_ok</div>
+    <div class="alert visually-hidden" role="alert">@_error</div>
 }
 
 <section class="panel route-editor-meta">
-    <div class="form-grid">
-        <input @bind="_name" placeholder="Название маршрута" />
-        <select @bind="_vehicleId">
-            <option value="@Guid.Empty">— автолавка —</option>
-            @foreach (var v in _vehicles)
-            {
-                <option value="@v.Id">@v.PlateNumber · @v.OperatorName</option>
-            }
-        </select>
-        <input @bind="_region" placeholder="Регион по умолчанию (BY-MI)" />
+    <div class="route-editor-fields">
+        <label class="field">
+            <span>Название</span>
+            <input @bind="_name" placeholder="Например: Минск — Борисов" />
+        </label>
+        <label class="field">
+            <span>Автолавка</span>
+            <div class="select-wrap">
+                <select @bind="_vehicleId">
+                    <option value="@Guid.Empty">Выберите автолавку</option>
+                    @foreach (var v in _vehicles)
+                    {
+                        <option value="@v.Id">@v.PlateNumber · @v.OperatorName</option>
+                    }
+                </select>
+            </div>
+        </label>
     </div>
 </section>
 
 <div class="map map-route" id="route-editor-map"></div>
-<p class="tiny muted">Клик по пустому месту — новая точка. Перетащите номер, чтобы сдвинуть остановку. Сохранение — кнопкой ниже.</p>
+<p class="tiny muted">Клик — новая точка, перетащите номер чтобы сдвинуть. Ниже задайте план прибытия (расписание рейса).</p>
 
 <section class="block">
     <header class="block-head">
-        <h2>Остановки</h2>
+        <h2>Остановки и расписание</h2>
         <span class="block-meta">@_stops.Count</span>
     </header>
     @if (_stops.Count == 0)
@@ -53,25 +65,68 @@
     }
     else
     {
-        <ul class="feed">
+        <ol class="stop-list">
             @for (var i = 0; i < _stops.Count; i++)
             {
                 var idx = i;
                 var stop = _stops[i];
-                <li class="feed-row route-stop-row">
-                    <div class="route-stop-main">
-                        <span class="route-seq">@(idx + 1)</span>
-                        <input value="@stop.Name" @onchange="e => RenameStop(idx, e.Value?.ToString())" placeholder="Название пункта" />
-                    </div>
-                    <div class="feed-side route-stop-actions">
-                        <span class="tiny muted">@stop.Lat.ToString("F4"), @stop.Lng.ToString("F4")</span>
-                        <button type="button" class="btn btn-ghost" disabled="@(idx == 0)" @onclick="() => MoveUp(idx)">↑</button>
-                        <button type="button" class="btn btn-ghost" disabled="@(idx == _stops.Count - 1)" @onclick="() => MoveDown(idx)">↓</button>
-                        <button type="button" class="btn btn-ghost" @onclick="() => RemoveStop(idx)">Удалить</button>
+                <li class="stop-card">
+                    <span class="route-seq" aria-hidden="true">@(idx + 1)</span>
+
+                    <div class="stop-card-main">
+                        <div class="stop-card-head">
+                            <input class="stop-name"
+                                   value="@stop.Name"
+                                   @onchange="e => RenameStop(idx, e.Value?.ToString())"
+                                   placeholder="Название пункта"
+                                   aria-label="Остановка @(idx + 1)" />
+                            <div class="stop-toolbar" role="group" aria-label="Действия">
+                                <button type="button"
+                                        class="stop-tool"
+                                        title="Выше"
+                                        disabled="@(idx == 0)"
+                                        @onclick="() => MoveUp(idx)">↑</button>
+                                <button type="button"
+                                        class="stop-tool"
+                                        title="Ниже"
+                                        disabled="@(idx == _stops.Count - 1)"
+                                        @onclick="() => MoveDown(idx)">↓</button>
+                                <button type="button"
+                                        class="stop-tool stop-tool-danger"
+                                        title="Удалить"
+                                        @onclick="() => RemoveStop(idx)">×</button>
+                            </div>
+                        </div>
+
+                        <div class="stop-fields">
+                            <label class="field stop-plan">
+                                <span>План прибытия</span>
+                                <input type="datetime-local"
+                                       value="@LocalPlanValue(stop)"
+                                       @onchange="e => SetPlanLocal(idx, e.Value?.ToString())" />
+                            </label>
+                            <div class="field stop-coords" aria-label="Координаты">
+                                <span>Координаты</span>
+                                <span class="stop-coords-value">@stop.Lat.ToString("F4"), @stop.Lng.ToString("F4")</span>
+                            </div>
+                            <div class="stop-photo">
+                                @if (!string.IsNullOrEmpty(stop.PhotoDataUrl))
+                                {
+                                    <img class="stop-thumb" src="@stop.PhotoDataUrl" alt="" />
+                                    <button type="button" class="stop-photo-clear" @onclick="() => ClearStopPhoto(idx)">Убрать</button>
+                                }
+                                <label class="stop-photo-add">
+                                    @(string.IsNullOrEmpty(stop.PhotoDataUrl) ? "Фото" : "Заменить")
+                                    <InputFile class="visually-hidden"
+                                               OnChange="e => OnStopPhotoSelected(idx, e)"
+                                               accept="image/jpeg,image/png,image/webp" />
+                                </label>
+                            </div>
+                        </div>
                     </div>
                 </li>
             }
-        </ul>
+        </ol>
     }
 </section>
 
@@ -107,6 +162,9 @@
         public double Lat { get; set; }
         public double Lng { get; set; }
         public DateTimeOffset? PlannedArrivalUtc { get; set; }
+        public string? PhotoDataUrl { get; set; }
+        public bool ClearPhoto { get; set; }
+        public bool PhotoDirty { get; set; }
     }
 
     protected override async Task OnInitializedAsync()
@@ -159,7 +217,7 @@
         }
         catch (Exception ex)
         {
-            _error = $"Карта: {ex.Message}";
+            Fail($"Карта: {ex.Message}");
         }
     }
 
@@ -175,7 +233,7 @@
             var route = await Api.GetRouteAsync(id);
             if (route is null)
             {
-                _error = "Маршрут не найден";
+                Fail("Маршрут не найден");
                 return;
             }
 
@@ -190,7 +248,8 @@
                     Name = s.SettlementName,
                     Lat = s.Latitude,
                     Lng = s.Longitude,
-                    PlannedArrivalUtc = s.PlannedArrivalUtc
+                    PlannedArrivalUtc = s.PlannedArrivalUtc,
+                    PhotoDataUrl = s.PhotoDataUrl
                 });
                 if (!string.IsNullOrWhiteSpace(s.RegionCode))
                 {
@@ -204,9 +263,12 @@
                 await DrawRouteAsync(fit: true);
             }
         }
+        catch (SessionExpiredException)
+        {
+        }
         catch (Exception ex)
         {
-            _error = ex.Message;
+            Fail(ex.Message);
         }
     }
 
@@ -257,6 +319,74 @@
         _stops[index].Lng = lng;
         _ok = null;
         return InvokeAsync(StateHasChanged);
+    }
+
+    private static string LocalPlanValue(DraftStop stop)
+    {
+        var local = (stop.PlannedArrivalUtc ?? DateTimeOffset.Now).ToLocalTime();
+        return local.ToString("yyyy-MM-dd'T'HH:mm");
+    }
+
+    private void SetPlanLocal(int index, string? value)
+    {
+        if (index < 0 || index >= _stops.Count || string.IsNullOrWhiteSpace(value))
+        {
+            return;
+        }
+
+        if (!DateTime.TryParse(value, out var local))
+        {
+            return;
+        }
+
+        var offset = TimeZoneInfo.Local.GetUtcOffset(local);
+        _stops[index].PlannedArrivalUtc = new DateTimeOffset(DateTime.SpecifyKind(local, DateTimeKind.Unspecified), offset);
+    }
+
+    private async Task OnStopPhotoSelected(int index, InputFileChangeEventArgs e)
+    {
+        if (index < 0 || index >= _stops.Count)
+        {
+            return;
+        }
+
+        try
+        {
+            var file = e.File;
+            if (file.Size > 400_000)
+            {
+                Fail("Фото остановки больше 400 КБ — сожмите и попробуйте снова");
+                return;
+            }
+
+            await using var stream = file.OpenReadStream(maxAllowedSize: 400_000);
+            using var ms = new MemoryStream();
+            await stream.CopyToAsync(ms);
+            var b64 = Convert.ToBase64String(ms.ToArray());
+            var mime = string.IsNullOrWhiteSpace(file.ContentType) ? "image/jpeg" : file.ContentType;
+            _stops[index].PhotoDataUrl = $"data:{mime};base64,{b64}";
+            _stops[index].ClearPhoto = false;
+            _stops[index].PhotoDirty = true;
+            Ok("Фото выбрано — нажмите «Сохранить», чтобы записать на сервер");
+        }
+        catch (Exception ex)
+        {
+            Fail(ex.Message.Contains("401", StringComparison.Ordinal)
+                ? "Не удалось загрузить файл в браузер. Обновите страницу и войдите снова."
+                : ex.Message);
+        }
+    }
+
+    private void ClearStopPhoto(int index)
+    {
+        if (index < 0 || index >= _stops.Count)
+        {
+            return;
+        }
+
+        _stops[index].PhotoDataUrl = null;
+        _stops[index].ClearPhoto = true;
+        _stops[index].PhotoDirty = true;
     }
 
     private async Task RenameStop(int index, string? name)
@@ -326,15 +456,22 @@
         _error = null;
         _ok = null;
 
+        await Session.RestoreAsync();
+        if (string.IsNullOrEmpty(Session.AccessToken))
+        {
+            Session.NotifyUnauthorized();
+            return;
+        }
+
         if (string.IsNullOrWhiteSpace(_name) || _vehicleId == Guid.Empty)
         {
-            _error = "Укажите название и автолавку";
+            Fail("Укажите название и автолавку");
             return;
         }
 
         if (_stops.Count == 0)
         {
-            _error = "Добавьте хотя бы одну остановку на карте";
+            Fail("Добавьте хотя бы одну остановку на карте");
             return;
         }
 
@@ -352,7 +489,7 @@
                 var created = await Api.CreateRouteAsync(new CreateRouteRequest(_name.Trim(), _vehicleId));
                 if (created is null)
                 {
-                    _error = "Не удалось создать маршрут";
+                    Fail("Не удалось создать маршрут");
                     return;
                 }
 
@@ -373,7 +510,9 @@
                 region,
                 s.Lat,
                 s.Lng,
-                s.PlannedArrivalUtc ?? now.AddMinutes(20 * (i + 1)))).ToList();
+                s.PlannedArrivalUtc ?? now.AddMinutes(20 * (i + 1)),
+                s.PhotoDirty && !s.ClearPhoto ? s.PhotoDataUrl : null,
+                s.ClearPhoto)).ToList();
 
             var saved = await Api.ReplaceRouteStopsAsync(routeId, items);
             if (saved is not null)
@@ -387,23 +526,28 @@
                         Name = s.SettlementName,
                         Lat = s.Latitude,
                         Lng = s.Longitude,
-                        PlannedArrivalUtc = s.PlannedArrivalUtc
+                        PlannedArrivalUtc = s.PlannedArrivalUtc,
+                        PhotoDataUrl = s.PhotoDataUrl
                     });
                 }
             }
 
             if (IsNew)
             {
+                Toasts.Success("Маршрут создан");
                 Nav.NavigateTo($"routes/{routeId}");
                 return;
             }
 
             await DrawRouteAsync(fit: false);
-            _ok = "Сохранено";
+            Ok("Сохранено");
+        }
+        catch (SessionExpiredException)
+        {
         }
         catch (Exception ex)
         {
-            _error = ex.Message;
+            Fail(ex.Message);
         }
         finally
         {
@@ -411,12 +555,68 @@
         }
     }
 
+    private async Task DeleteAsync()
+    {
+        if (IsNew || RouteId is null || RouteId == Guid.Empty || _busy)
+        {
+            return;
+        }
+
+        _error = null;
+        _ok = null;
+        _busy = true;
+        try
+        {
+            await Session.RestoreAsync();
+            if (string.IsNullOrEmpty(Session.AccessToken))
+            {
+                Session.NotifyUnauthorized();
+                return;
+            }
+
+            await Api.DeleteRouteAsync(RouteId.Value);
+            Toasts.Success("Маршрут удалён");
+            Nav.NavigateTo("routes");
+        }
+        catch (SessionExpiredException)
+        {
+        }
+        catch (Exception ex)
+        {
+            Fail(ex.Message);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private void Fail(string message)
+    {
+        _error = message;
+        _ok = null;
+        Toasts.Error(message);
+    }
+
+    private void Ok(string message)
+    {
+        _ok = message;
+        _error = null;
+        Toasts.Success(message);
+    }
+
     public async ValueTask DisposeAsync()
     {
         _self?.Dispose();
         if (_map is not null)
         {
-            await _map.DisposeAsync();
+            try
+            {
+                await _map.DisposeAsync();
+            }
+            catch (JSDisconnectedException)
+            {
+            }
         }
     }
 }

@@ -6,6 +6,7 @@ using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.AddAvtomagazinDefaults();
+builder.AddAvtomagazinObjectStorage();
 DeploySecrets.EnsureInternalKey(builder.Configuration, builder.Environment);
 
 builder.Services.AddScoped<ISessionGuard, IdentityDbSessionGuard>();
@@ -52,6 +53,16 @@ using (var scope = app.Services.CreateScope())
             """ALTER TABLE "Users" ADD COLUMN IF NOT EXISTS "FailedLoginCount" integer NOT NULL DEFAULT 0;""");
         await db.Database.ExecuteSqlRawAsync(
             """ALTER TABLE "Users" ADD COLUMN IF NOT EXISTS "LockoutEndUtc" timestamp with time zone;""");
+        await db.Database.ExecuteSqlRawAsync(
+            """ALTER TABLE "Users" ADD COLUMN IF NOT EXISTS "LastName" character varying(80);""");
+        await db.Database.ExecuteSqlRawAsync(
+            """ALTER TABLE "Users" ADD COLUMN IF NOT EXISTS "FirstName" character varying(80);""");
+        await db.Database.ExecuteSqlRawAsync(
+            """ALTER TABLE "Users" ADD COLUMN IF NOT EXISTS "MiddleName" character varying(80);""");
+        await db.Database.ExecuteSqlRawAsync(
+            """ALTER TABLE "Users" ADD COLUMN IF NOT EXISTS "Phone" character varying(32);""");
+        await db.Database.ExecuteSqlRawAsync(
+            """ALTER TABLE "Users" ADD COLUMN IF NOT EXISTS "PhotoUrl" character varying(1000);""");
         await db.Database.ExecuteSqlRawAsync(
             """UPDATE "Users" SET "Status" = 'active' WHERE "Status" IS NULL OR "Status" = '';""");
         await db.Database.ExecuteSqlRawAsync(

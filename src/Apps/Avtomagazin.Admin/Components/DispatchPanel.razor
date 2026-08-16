@@ -1,9 +1,17 @@
 @inject AvtomagazinClient Api
 @inject StaffSession Session
 @inject IJSRuntime Js
+@using Microsoft.JSInterop
 @implements IAsyncDisposable
 
 <div class="dispatch">
+    <div class="page-head" style="padding-top:0">
+        <div>
+            <div class="brand">Мониторинг</div>
+            <div class="who">Жалобы и ход рейсов: где отстаём от графика.</div>
+        </div>
+    </div>
+
     <div class="pulse">
         <div class="pulse-item">
             <span class="pulse-n">@_liveCount</span>
@@ -17,18 +25,9 @@
             <span class="pulse-n">@_cases.Sum(c => c.ReportCount)</span>
             <span class="pulse-l">жалобы</span>
         </div>
-        <div class="pulse-item">
-            <span class="pulse-n">@_activeCount</span>
-            <span class="pulse-l">в парке</span>
-        </div>
-    </div>
-
-    <div class="map-stage">
-        <div class="map map-hero" id="staff-dispatch-map"></div>
-        <div class="map-legend">
-            <span><i class="dot live"></i> эфир</span>
-            <span><i class="dot stale"></i> GPS</span>
-            <span><i class="dot stop"></i> остановка</span>
+        <div class="pulse-item @(_delayedCount > 0 ? "pulse-warn" : null)">
+            <span class="pulse-n">@_delayedCount</span>
+            <span class="pulse-l">с отставанием</span>
         </div>
     </div>
 
@@ -80,32 +79,34 @@
 
     <section class="block">
         <header class="block-head">
-            <h2>Парк</h2>
-            <span class="block-meta">@_vans.Count авто</span>
+            <h2>Активные маршруты</h2>
+            <span class="block-meta">@ActiveRoutes.Count()</span>
         </header>
-        @if (_vans.Count == 0)
+        @if (!ActiveRoutes.Any())
         {
-            <p class="empty">Автолавок пока нет — добавьте во вкладке «Парк».</p>
+            <p class="empty">Нет активных рейсов — автолавка на маршруте должна быть в парке и на связи.</p>
         }
         else
         {
             <ul class="feed">
-                @foreach (var van in OrderedVans)
+                @foreach (var row in ActiveRoutes)
                 {
-                    var state = VanState(van);
-                    <li class="feed-row">
-                        <div class="van-line">
-                            <i class="dot @state.Css"></i>
-                            <div>
-                                <strong>@van.PlateNumber</strong>
-                                <span class="feed-sub">@van.OperatorName</span>
-                            </div>
+                    <li class="feed-row @(row.DelayMinutes is > 5 ? "warn" : null)">
+                        <div>
+                            <strong>@row.RouteName</strong>
+                            <span class="feed-sub">
+                                @row.Plate
+                                @if (!string.IsNullOrEmpty(row.NextStop))
+                                {
+                                    <text> · след. @row.NextStop</text>
+                                }
+                            </span>
                         </div>
                         <div class="feed-side">
-                            <span>@state.Label</span>
-                            @if (van.LastSeenAtUtc is DateTimeOffset seen)
+                            <span class="@(row.DelayMinutes is > 5 ? "eta-min" : null)">@row.DelayLabel</span>
+                            @if (!string.IsNullOrEmpty(row.ScheduleLabel))
                             {
-                                <time>@Ago(seen)</time>
+                                <time>@row.ScheduleLabel</time>
                             }
                         </div>
                     </li>
@@ -113,31 +114,6 @@
             </ul>
         }
     </section>
-
-    @if (_etas.Count > 0)
-    {
-        <section class="block">
-            <header class="block-head">
-                <h2>Ближайшие</h2>
-                <span class="block-meta">ETA</span>
-            </header>
-            <ul class="feed">
-                @foreach (var eta in _etas.OrderBy(e => e.MinutesUntilArrival).Take(5))
-                {
-                    <li class="feed-row">
-                        <div>
-                            <strong>@eta.SettlementName</strong>
-                            <span class="feed-sub">@PlateOf(eta.VehicleId)</span>
-                        </div>
-                        <div class="feed-side">
-                            <span class="eta-min">~@eta.MinutesUntilArrival мин</span>
-                            <time>@eta.EstimatedArrivalUtc.ToLocalTime().ToString("HH:mm")</time>
-                        </div>
-                    </li>
-                }
-            </ul>
-        </section>
-    }
 </div>
 
 @if (_detail is not null)
@@ -263,18 +239,18 @@
     private List<VehicleDto> _vans = [];
     private List<CaseSummaryDto> _cases = [];
     private List<EtaDto> _etas = [];
+    private List<RouteDto> _routes = [];
     private CaseDetailDto? _detail;
     private string _comment = "";
     private string _statusFilter = "active";
     private string _settlementQuery = "";
     private string? _caseError;
     private bool _busy;
-    private IJSObjectReference? _map;
     private CancellationTokenSource? _poll;
 
     private int _liveCount => _vans.Count(IsLive);
     private int _signalCount => _vans.Count(v => v.LastLatitude is not null);
-    private int _activeCount => _vans.Count(v => v.IsActive);
+    private int _delayedCount => ActiveRoutes.Count(r => r.DelayMinutes is > 5);
 
     private IEnumerable<CaseSummaryDto> FilteredCases
     {
@@ -296,34 +272,97 @@
         }
     }
 
-    private IEnumerable<VehicleDto> OrderedVans =>
-        _vans
-            .OrderByDescending(IsLive)
-            .ThenByDescending(v => v.LastSeenAtUtc ?? DateTimeOffset.MinValue);
+    private IEnumerable<RouteProgress> ActiveRoutes
+    {
+        get
+        {
+            var etaByRoute = _etas
+                .GroupBy(e => e.RouteId)
+                .ToDictionary(g => g.Key, g => g.OrderBy(e => e.EstimatedArrivalUtc).First());
+
+            var rows = new List<RouteProgress>();
+            foreach (var route in _routes)
+            {
+                var van = VanOf(route.VehicleId);
+                if (van is null || !van.IsActive)
+                {
+                    continue;
+                }
+
+                if (!IsLive(van) && van.LastLatitude is null && !etaByRoute.ContainsKey(route.Id))
+                {
+                    continue;
+                }
+
+                var stops = (route.Stops ?? []).OrderBy(s => s.Sequence).ToList();
+                if (stops.Count == 0)
+                {
+                    continue;
+                }
+
+                etaByRoute.TryGetValue(route.Id, out var eta);
+                RouteStopDto? next = null;
+                if (eta is not null)
+                {
+                    next = stops.FirstOrDefault(s => s.Id == eta.StopId)
+                           ?? stops.FirstOrDefault(s =>
+                               s.SettlementName.Equals(eta.SettlementName, StringComparison.OrdinalIgnoreCase));
+                }
+
+                next ??= stops
+                    .Where(s => s.PlannedArrivalUtc >= DateTimeOffset.UtcNow.AddMinutes(-30))
+                    .OrderBy(s => s.PlannedArrivalUtc)
+                    .FirstOrDefault()
+                    ?? stops.Last();
+
+                int? delay = null;
+                string delayLabel;
+                string scheduleLabel;
+                if (eta is not null && next is not null)
+                {
+                    delay = (int)Math.Round((eta.EstimatedArrivalUtc - next.PlannedArrivalUtc).TotalMinutes);
+                    delayLabel = delay switch
+                    {
+                        > 2 => $"+{delay} мин",
+                        < -2 => $"{delay} мин",
+                        _ => "по графику"
+                    };
+                    scheduleLabel =
+                        $"план {next.PlannedArrivalUtc.ToLocalTime():HH:mm} · ETA {eta.EstimatedArrivalUtc.ToLocalTime():HH:mm}";
+                }
+                else if (next is not null)
+                {
+                    delayLabel = IsLive(van) ? "ждём ETA" : "нет ETA";
+                    scheduleLabel = $"план {next.PlannedArrivalUtc.ToLocalTime():HH:mm}";
+                }
+                else
+                {
+                    delayLabel = "—";
+                    scheduleLabel = "";
+                }
+
+                rows.Add(new RouteProgress(
+                    route.Name,
+                    van.PlateNumber,
+                    next?.SettlementName ?? "",
+                    delay,
+                    delayLabel,
+                    scheduleLabel,
+                    IsLive(van)));
+            }
+
+            return rows
+                .OrderByDescending(r => r.DelayMinutes ?? int.MinValue)
+                .ThenByDescending(r => r.Live)
+                .ThenBy(r => r.RouteName);
+        }
+    }
 
     protected override async Task OnInitializedAsync()
     {
         await ReloadAsync();
         _poll = new CancellationTokenSource();
         _ = LoopAsync(_poll.Token);
-    }
-
-    protected override async Task OnAfterRenderAsync(bool firstRender)
-    {
-        if (!firstRender)
-        {
-            return;
-        }
-
-        try
-        {
-            _map = await Js.InvokeAsync<IJSObjectReference>("import", "./js/map.js");
-            await _map.InvokeAsync<bool>("init", "staff-dispatch-map", 53.55, 26.4, 7);
-            await DrawAsync();
-        }
-        catch
-        {
-        }
     }
 
     private async Task LoopAsync(CancellationToken ct)
@@ -333,11 +372,7 @@
             try
             {
                 await ReloadAsync();
-                await InvokeAsync(async () =>
-                {
-                    await DrawAsync();
-                    StateHasChanged();
-                });
+                await InvokeAsync(StateHasChanged);
             }
             catch
             {
@@ -360,6 +395,7 @@
             };
             _cases = await Api.GetCasesAsync(status);
             _etas = await Api.GetEtaAsync();
+            _routes = await Api.GetRoutesAsync();
         }
         catch
         {
@@ -375,43 +411,6 @@
 
         _statusFilter = filter;
         await ReloadAsync();
-    }
-
-    private async Task DrawAsync()
-    {
-        if (_map is null)
-        {
-            return;
-        }
-
-        var routes = await Api.GetRoutesAsync();
-        var markers = new List<object>();
-        foreach (var stop in routes.SelectMany(r => r.Stops))
-        {
-            markers.Add(new
-            {
-                lat = stop.Latitude,
-                lng = stop.Longitude,
-                kind = "stop",
-                emoji = "",
-                popup = $"<b>{stop.SettlementName}</b><br/>{stop.PlannedArrivalUtc.ToLocalTime():dd.MM HH:mm}"
-            });
-        }
-
-        foreach (var van in _vans.Where(v => v.LastLatitude is not null))
-        {
-            var live = IsLive(van);
-            markers.Add(new
-            {
-                lat = van.LastLatitude,
-                lng = van.LastLongitude,
-                kind = live ? "van" : "van-stale",
-                emoji = "",
-                popup = $"<b>{van.PlateNumber}</b><br/>{van.OperatorName}<br/>{(live ? "в эфире" : "последний GPS")}"
-            });
-        }
-
-        await _map.InvokeVoidAsync("setMarkers", "staff-dispatch-map", markers);
     }
 
     private async Task OpenCaseAsync(Guid id)
@@ -509,26 +508,8 @@
     private VehicleDto? VanOf(Guid? vehicleId)
         => vehicleId is Guid id ? _vans.FirstOrDefault(v => v.Id == id) : null;
 
-    private string PlateOf(Guid vehicleId)
-        => _vans.FirstOrDefault(v => v.Id == vehicleId)?.PlateNumber ?? "—";
-
     private static bool IsLive(VehicleDto van)
         => string.Equals(van.LastSource, "driver-app", StringComparison.OrdinalIgnoreCase);
-
-    private static (string Css, string Label) VanState(VehicleDto van)
-    {
-        if (IsLive(van))
-        {
-            return ("live", "эфир");
-        }
-
-        if (van.LastLatitude is not null)
-        {
-            return ("stale", "GPS");
-        }
-
-        return ("off", "нет сигнала");
-    }
 
     private static string StatusLabel(string status) => status switch
     {
@@ -579,12 +560,24 @@
 
     public async ValueTask DisposeAsync()
     {
-        await SetBodyLockAsync(false);
+        try
+        {
+            await SetBodyLockAsync(false);
+        }
+        catch (JSDisconnectedException)
+        {
+        }
+
         _poll?.Cancel();
         _poll?.Dispose();
-        if (_map is not null)
-        {
-            await _map.DisposeAsync();
-        }
     }
+
+    private sealed record RouteProgress(
+        string RouteName,
+        string Plate,
+        string NextStop,
+        int? DelayMinutes,
+        string DelayLabel,
+        string ScheduleLabel,
+        bool Live);
 }

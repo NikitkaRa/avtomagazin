@@ -5,69 +5,69 @@
 
 <PageTitle>Автопарк</PageTitle>
 
-<h1>Автопарк</h1>
+<div class="page-head">
+    <div>
+        <div class="brand">Автопарк</div>
+        <div class="who">Список автолавок. Создание и правки — на отдельных экранах.</div>
+    </div>
+    <a class="btn" href="fleet/new">Новая автолавка</a>
+</div>
 
 @if (!string.IsNullOrEmpty(_error))
 {
     <div class="alert">@_error</div>
 }
 
-<section class="panel">
-    <h2>Добавить автолавку</h2>
-    <div class="form-grid">
-        <input @bind="_plate" placeholder="Госномер" />
-        <input @bind="_operator" placeholder="Оператор (райпо)" />
-        <button type="button" class="btn" @onclick="CreateAsync">Создать</button>
-    </div>
-</section>
-
 @if (_loading)
 {
-    <p>Загрузка…</p>
+    <p class="muted">Загрузка…</p>
+}
+else if (_vehicles.Count == 0)
+{
+    <p class="empty">Автолавок пока нет. Добавьте первую.</p>
 }
 else
 {
-    @foreach (var v in _vehicles)
-    {
-        <section class="panel">
-            <div class="list-row" style="border:0;padding-top:0">
-                <div>
-                    <strong>@v.PlateNumber</strong>
-                    <div class="muted">@v.OperatorName · @(v.IsActive ? "активна" : "выкл")</div>
+    <ul class="feed">
+        @foreach (var v in _vehicles.OrderBy(x => x.PlateNumber))
+        {
+            <li class="feed-row fleet-row">
+                <div class="fleet-main">
+                    @if (!string.IsNullOrEmpty(v.PhotoDataUrl))
+                    {
+                        <img class="fleet-thumb" src="@v.PhotoDataUrl" alt="" />
+                    }
+                    else
+                    {
+                        <div class="fleet-thumb fleet-thumb-empty" aria-hidden="true"></div>
+                    }
+                    <div>
+                        <strong>@v.PlateNumber</strong>
+                        <span class="feed-sub">
+                            @v.OperatorName · @(v.IsActive ? "активна" : "выкл")
+                            @if (!string.IsNullOrWhiteSpace(v.DriverName))
+                            {
+                                <text> · вод. @v.DriverName</text>
+                            }
+                            @if (!string.IsNullOrWhiteSpace(v.SellerName))
+                            {
+                                <text> · прод. @v.SellerName</text>
+                            }
+                        </span>
+                    </div>
                 </div>
-                <button class="btn btn-ghost" @onclick="() => ToggleAsync(v)">
-                    @(v.IsActive ? "Выключить" : "Включить")
-                </button>
-            </div>
-
-            <div class="form-grid" style="margin-top:0.75rem">
-                <input value="@Edit(v).DriverName" @onchange="e => Edit(v).DriverName = e.Value?.ToString()" placeholder="Водитель" />
-                <input value="@Edit(v).DriverPhone" @onchange="e => Edit(v).DriverPhone = e.Value?.ToString()" placeholder="Тел. водителя" />
-                <input value="@Edit(v).SellerName" @onchange="e => Edit(v).SellerName = e.Value?.ToString()" placeholder="Продавец" />
-                <input value="@Edit(v).SellerPhone" @onchange="e => Edit(v).SellerPhone = e.Value?.ToString()" placeholder="Тел. продавца" />
-                <input value="@Edit(v).OperatorPhone" @onchange="e => Edit(v).OperatorPhone = e.Value?.ToString()" placeholder="Тел. райпо" />
-                <button type="button" class="btn" @onclick="() => SaveContactsAsync(v)">Сохранить контакты</button>
-            </div>
-        </section>
-    }
+                <div class="feed-side">
+                    <a class="btn btn-ghost" href="@($"fleet/{v.Id}")">Открыть</a>
+                </div>
+            </li>
+        }
+    </ul>
 }
 
 @code {
     private bool _loading = true;
     private string? _error;
     private List<VehicleDto> _vehicles = [];
-    private readonly Dictionary<Guid, ContactEdit> _edits = new();
-    private string _plate = "";
-    private string _operator = "";
-
-    private sealed class ContactEdit
-    {
-        public string? DriverName { get; set; }
-        public string? DriverPhone { get; set; }
-        public string? SellerName { get; set; }
-        public string? SellerPhone { get; set; }
-        public string? OperatorPhone { get; set; }
-    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -81,32 +81,13 @@ else
         await ReloadAsync();
     }
 
-    private ContactEdit Edit(VehicleDto v)
-    {
-        if (!_edits.TryGetValue(v.Id, out var edit))
-        {
-            edit = new ContactEdit
-            {
-                DriverName = v.DriverName,
-                DriverPhone = v.DriverPhone,
-                SellerName = v.SellerName,
-                SellerPhone = v.SellerPhone,
-                OperatorPhone = v.OperatorPhone
-            };
-            _edits[v.Id] = edit;
-        }
-
-        return edit;
-    }
-
     private async Task ReloadAsync()
     {
         _loading = true;
-        _error = null;
         try
         {
             _vehicles = await Api.GetVehiclesAsync();
-            _edits.Clear();
+            _error = null;
         }
         catch (Exception ex)
         {
@@ -115,54 +96,6 @@ else
         finally
         {
             _loading = false;
-        }
-    }
-
-    private async Task CreateAsync()
-    {
-        try
-        {
-            await Api.CreateVehicleAsync(new CreateVehicleRequest(_plate, _operator));
-            _plate = "";
-            _operator = "";
-            await ReloadAsync();
-        }
-        catch (Exception ex)
-        {
-            _error = ex.Message;
-        }
-    }
-
-    private async Task ToggleAsync(VehicleDto v)
-    {
-        try
-        {
-            await Api.SetVehicleActiveAsync(v.Id, !v.IsActive);
-            await ReloadAsync();
-        }
-        catch (Exception ex)
-        {
-            _error = ex.Message;
-        }
-    }
-
-    private async Task SaveContactsAsync(VehicleDto v)
-    {
-        var edit = Edit(v);
-        try
-        {
-            await Api.UpdateVehicleContactsAsync(v.Id, new UpdateVehicleContactsRequest(
-                edit.DriverName,
-                edit.DriverPhone,
-                edit.SellerName,
-                edit.SellerPhone,
-                edit.OperatorPhone));
-            _error = null;
-            await ReloadAsync();
-        }
-        catch (Exception ex)
-        {
-            _error = ex.Message;
         }
     }
 }

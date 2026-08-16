@@ -26,6 +26,7 @@ public sealed class RoutingDbContext(DbContextOptions<RoutingDbContext> options)
             e.HasKey(x => x.Id);
             e.Property(x => x.SettlementName).HasMaxLength(200);
             e.Property(x => x.RegionCode).HasMaxLength(16);
+            e.Property(x => x.PhotoDataUrl);
             e.HasIndex(x => x.SettlementName);
         });
 
@@ -95,6 +96,7 @@ public sealed class RouteStop
     public double Latitude { get; set; }
     public double Longitude { get; set; }
     public DateTimeOffset PlannedArrivalUtc { get; set; }
+    public string? PhotoDataUrl { get; set; }
 }
 
 public sealed class EtaSnapshot

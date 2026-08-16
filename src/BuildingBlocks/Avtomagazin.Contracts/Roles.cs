@@ -5,10 +5,13 @@ public static class Roles
     /// <summary>Житель деревни. Регается в приложении жителя, сразу активен.</summary>
     public const string Resident = "resident";
 
-    /// <summary>Водитель и продавец автолавки — один человек в кабине.</summary>
+    /// <summary>Водитель автолавки — ведёт машину, часто шлёт GPS.</summary>
     public const string Driver = "driver";
 
-    /// <summary>Диспетчер: сидит в админке, видит парк и подписки.</summary>
+    /// <summary>Продавец в автолавке — торгует в салоне.</summary>
+    public const string Seller = "seller";
+
+    /// <summary>Диспетчер: в офисе, жалобы и операционка.</summary>
     public const string Operator = "operator";
 
     /// <summary>Админ райпо: подтверждает персонал. Обычно один.</summary>
@@ -18,12 +21,15 @@ public static class Roles
     {
         Resident => "Житель",
         Driver => "Водитель",
+        Seller => "Продавец",
         Operator => "Диспетчер",
         Admin => "Админ",
         _ => role
     };
 
-    public static bool IsStaff(string role) => role is Driver or Operator or Admin;
+    public static bool IsStaff(string role) => role is Driver or Seller or Operator or Admin;
+
+    public static bool IsVanCrew(string role) => role is Driver or Seller;
 }
 
 public static class UserStatuses

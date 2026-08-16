@@ -31,7 +31,7 @@ public class IdentityApiTests : IClassFixture<IdentityApiFactory>
     }
 
     [Fact]
-    public async Task Login_seller_is_driver_for_pukhovichi_van()
+    public async Task Login_seller_has_seller_role_on_pukhovichi_van()
     {
         var response = await _client.PostAsJsonAsync("/api/auth/login", new
         {
@@ -41,7 +41,7 @@ public class IdentityApiTests : IClassFixture<IdentityApiFactory>
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-        Assert.Equal("driver", doc.RootElement.GetProperty("role").GetString());
+        Assert.Equal("seller", doc.RootElement.GetProperty("role").GetString());
         Assert.Equal(
             Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"),
             doc.RootElement.GetProperty("vehicleId").GetGuid());

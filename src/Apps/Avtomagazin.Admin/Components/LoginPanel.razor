@@ -17,7 +17,22 @@
             </label>
             <label class="auth-field">
                 <span>Пароль</span>
-                <input type="password" @bind="_password" autocomplete="current-password" />
+                <div class="auth-password">
+                    <input type="@(_showPassword ? "text" : "password")"
+                           @bind="_password"
+                           autocomplete="current-password" />
+                    <button type="button"
+                            class="auth-eye"
+                            aria-label="@(_showPassword ? "Скрыть пароль" : "Показать пароль")"
+                            @onclick="() => _showPassword = !_showPassword">
+                        @(_showPassword ? "скрыть" : "показать")
+                    </button>
+                </div>
+            </label>
+
+            <label class="auth-remember">
+                <input type="checkbox" @bind="_remember" />
+                <span>Запомнить меня</span>
             </label>
 
             @if (!string.IsNullOrEmpty(_error))
@@ -37,6 +52,8 @@
     private string _password = "";
     private string? _error;
     private bool _busy;
+    private bool _remember = true;
+    private bool _showPassword;
 
     private async Task EnterAsync()
     {
@@ -57,7 +74,7 @@
                 return;
             }
 
-            Session.SignIn(login.Role, login.Email, login.Name, login.VehicleId, login.AccessToken);
+            Session.SignIn(login.Role, login.Email, login.Name, login.VehicleId, login.AccessToken, _remember);
         }
         catch (Exception ex)
         {

@@ -5,11 +5,19 @@ namespace Avtomagazin.Admin;
 
 public sealed class StaffSession : IAccessTokenAccessor
 {
-    private const string StoreKey = "avtomagazin.staff";
-    private readonly ProtectedLocalStorage _store;
-    private bool _restored;
+    private const string LocalKey = "avtomagazin.staff";
+    private const string SessionKey = "avtomagazin.staff.session";
 
-    public StaffSession(ProtectedLocalStorage store) => _store = store;
+    private readonly ProtectedLocalStorage _local;
+    private readonly ProtectedSessionStorage _session;
+    private bool _restored;
+    private bool _remember = true;
+
+    public StaffSession(ProtectedLocalStorage local, ProtectedSessionStorage session)
+    {
+        _local = local;
+        _session = session;
+    }
 
     public string? Role { get; private set; }
     public string? Email { get; private set; }
@@ -17,10 +25,12 @@ public sealed class StaffSession : IAccessTokenAccessor
     public Guid? VehicleId { get; private set; }
     public string? AccessToken { get; private set; }
 
-    public bool IsAuthenticated => Role is not null;
+    public bool IsAuthenticated => Role is not null && AccessToken is { Length: > 0 };
     public bool IsDriver => Role == "driver";
     public bool IsAdmin => Role == "admin";
     public bool IsOperator => Role is "operator" or "admin";
+
+    public SignOutReason? LastSignOutReason { get; private set; }
 
     public event Action? Changed;
 
@@ -33,14 +43,13 @@ public sealed class StaffSession : IAccessTokenAccessor
 
         try
         {
-            var result = await _store.GetAsync<StaffSnapshot>(StoreKey);
-            if (result.Success && result.Value is { Role.Length: > 0 } saved)
+            if (await TryRestoreAsync(_local.GetAsync<StaffSnapshot>(LocalKey)))
             {
-                Role = saved.Role;
-                Email = saved.Email;
-                Name = saved.Name;
-                VehicleId = saved.VehicleId;
-                AccessToken = saved.AccessToken;
+                _remember = true;
+            }
+            else if (await TryRestoreAsync(_session.GetAsync<StaffSnapshot>(SessionKey)))
+            {
+                _remember = false;
             }
 
             _restored = true;
@@ -52,25 +61,65 @@ public sealed class StaffSession : IAccessTokenAccessor
         }
     }
 
-    public void SignIn(string role, string email, string? name, Guid? vehicleId, string? accessToken)
+    private async Task<bool> TryRestoreAsync(ValueTask<ProtectedBrowserStorageResult<StaffSnapshot>> pending)
+    {
+        var result = await pending;
+        if (!result.Success || result.Value is not { Role.Length: > 0, AccessToken.Length: > 0 } saved)
+        {
+            return false;
+        }
+
+        Role = saved.Role;
+        Email = saved.Email;
+        Name = saved.Name;
+        VehicleId = saved.VehicleId;
+        AccessToken = saved.AccessToken;
+        return true;
+    }
+
+    public void SignIn(string role, string email, string? name, Guid? vehicleId, string? accessToken, bool remember = true)
     {
         Role = role;
         Email = email;
         Name = name;
         VehicleId = vehicleId;
         AccessToken = accessToken;
+        _remember = remember;
         _restored = true;
+        Persist();
+        Changed?.Invoke();
+    }
+
+    public void RefreshProfile(string? name)
+    {
+        Name = name;
         Persist();
         Changed?.Invoke();
     }
 
     public void SignOut()
     {
+        Clear(SignOutReason.Manual);
+    }
+
+    public void NotifyUnauthorized()
+    {
+        if (!IsAuthenticated && AccessToken is null)
+        {
+            return;
+        }
+
+        Clear(SignOutReason.Expired);
+    }
+
+    private void Clear(SignOutReason reason)
+    {
         Role = null;
         Email = null;
         Name = null;
         VehicleId = null;
         AccessToken = null;
+        LastSignOutReason = reason;
         _restored = true;
         Persist();
         Changed?.Invoke();
@@ -82,15 +131,23 @@ public sealed class StaffSession : IAccessTokenAccessor
     {
         try
         {
-            if (Role is null)
+            await _local.DeleteAsync(LocalKey);
+            await _session.DeleteAsync(SessionKey);
+
+            if (Role is null || AccessToken is null)
             {
-                await _store.DeleteAsync(StoreKey);
                 return;
             }
 
-            await _store.SetAsync(
-                StoreKey,
-                new StaffSnapshot(Role, Email, Name, VehicleId, AccessToken));
+            var snap = new StaffSnapshot(Role, Email, Name, VehicleId, AccessToken);
+            if (_remember)
+            {
+                await _local.SetAsync(LocalKey, snap);
+            }
+            else
+            {
+                await _session.SetAsync(SessionKey, snap);
+            }
         }
         catch (InvalidOperationException)
         {
@@ -103,4 +160,10 @@ public sealed class StaffSession : IAccessTokenAccessor
         string? Name,
         Guid? VehicleId,
         string? AccessToken);
+}
+
+public enum SignOutReason
+{
+    Manual,
+    Expired
 }

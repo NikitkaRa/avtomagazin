@@ -12,14 +12,15 @@ export function init(id, lat, lon, zoom) {
         el._avtoRouteLayer = null;
         el._avtoRouteLine = null;
         el._avtoRouteMarkers = null;
+        el._avtoFavLayer = null;
         el._avtoClickHandler = null;
         el._avtoRouteRef = null;
     }
 
-    const map = L.map(el, { zoomControl: true, attributionControl: true });
+    const map = L.map(el, { zoomControl: true, attributionControl: false });
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
         maxZoom: 18,
-        attribution: "&copy; OpenStreetMap"
+        attribution: ""
     }).addTo(map);
     map.setView([lat, lon], zoom);
     el._avtoMap = map;
@@ -37,6 +38,7 @@ export function init(id, lat, lon, zoom) {
 
     el._avtoVans = L.layerGroup().addTo(map);
     el._avtoRouteLayer = L.layerGroup().addTo(map);
+    el._avtoFavLayer = L.layerGroup().addTo(map);
     el._avtoFitted = false;
     el._avtoUserMoved = false;
 
@@ -93,6 +95,77 @@ export function setMarkers(id, items) {
         }
         el._avtoFitted = true;
     }
+}
+
+export function setFavoriteHeat(id, items, options) {
+    const el = document.getElementById(id);
+    if (!el || !el._avtoMap) {
+        return;
+    }
+
+    if (!el._avtoFavLayer) {
+        el._avtoFavLayer = L.layerGroup().addTo(el._avtoMap);
+    }
+
+    el._avtoFavLayer.clearLayers();
+    const list = (items || []).filter((x) => x && Number.isFinite(x.lat) && Number.isFinite(x.lng));
+    if (list.length === 0) {
+        return;
+    }
+
+    const scaleMin = Number.isFinite(Number(options?.scaleMin)) ? Number(options.scaleMin) : 0;
+    const scaleMax = Number(options?.scaleMax) || 100;
+    const fit = options?.fit !== false;
+    const bounds = [];
+
+    for (const item of list) {
+        const count = Math.max(0, Number(item.count) || 0);
+        const t = Math.min(1, Math.max(0, (Math.min(count, scaleMax) - scaleMin) / Math.max(1, scaleMax - scaleMin)));
+        const color = favColor(t);
+        const radius = 7 + Math.round(11 * t);
+        const circle = L.circleMarker([item.lat, item.lng], {
+            radius,
+            color: "#fff",
+            weight: 2,
+            fillColor: color,
+            fillOpacity: 0.82
+        });
+        const label = item.name || "Остановка";
+        circle.bindPopup(`<b>${label}</b><br/>В избранном: <b>${count}</b>`);
+        circle.addTo(el._avtoFavLayer);
+        bounds.push([item.lat, item.lng]);
+    }
+
+    if (fit && bounds.length > 0) {
+        if (bounds.length === 1) {
+            el._avtoMap.setView(bounds[0], 12);
+        } else {
+            el._avtoMap.fitBounds(bounds, { padding: [36, 36], maxZoom: 12 });
+        }
+    }
+}
+
+function favColor(t) {
+    // 0 (cool mint) → 100 (warm terracotta)
+    const stops = [
+        [0, [180, 220, 190]],
+        [0.35, [60, 170, 110]],
+        [0.65, [210, 150, 70]],
+        [1, [154, 75, 46]]
+    ];
+    let a = stops[0];
+    let b = stops[stops.length - 1];
+    for (let i = 0; i < stops.length - 1; i++) {
+        if (t >= stops[i][0] && t <= stops[i + 1][0]) {
+            a = stops[i];
+            b = stops[i + 1];
+            break;
+        }
+    }
+    const span = (b[0] - a[0]) || 1;
+    const u = (t - a[0]) / span;
+    const rgb = a[1].map((c, i) => Math.round(c + (b[1][i] - c) * u));
+    return `rgb(${rgb[0]}, ${rgb[1]}, ${rgb[2]})`;
 }
 
 export function enableRouteClicks(id, dotNetRef) {

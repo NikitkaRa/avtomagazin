@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using Avtomagazin.Contracts;
 using Avtomagazin.Contracts.Events;
+using Avtomagazin.Fleet.Api;
 using Avtomagazin.Fleet.Api.Data;
 using Avtomagazin.Fleet.Api.Gps;
 using Avtomagazin.ServiceDefaults;
@@ -9,6 +10,7 @@ using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.AddAvtomagazinDefaults();
+builder.AddAvtomagazinObjectStorage();
 
 var fleetCs = DeploySecrets.ConnectionString(
     builder.Configuration,
@@ -61,6 +63,12 @@ using (var scope = app.Services.CreateScope())
             """ALTER TABLE "Vehicles" ADD COLUMN IF NOT EXISTS "SellerPhone" character varying(32)""");
         await db.Database.ExecuteSqlRawAsync(
             """ALTER TABLE "Vehicles" ADD COLUMN IF NOT EXISTS "OperatorPhone" character varying(32)""");
+        await db.Database.ExecuteSqlRawAsync(
+            """ALTER TABLE "Vehicles" ADD COLUMN IF NOT EXISTS "PhotoDataUrl" text""");
+        await db.Database.ExecuteSqlRawAsync(
+            """ALTER TABLE "Vehicles" ADD COLUMN IF NOT EXISTS "DriverUserId" uuid""");
+        await db.Database.ExecuteSqlRawAsync(
+            """ALTER TABLE "Vehicles" ADD COLUMN IF NOT EXISTS "SellerUserId" uuid""");
     }
     await Seed.EnsureSeedAsync(db);
 }
@@ -90,25 +98,48 @@ app.MapGet("/api/vehicles/{id:guid}/position", async (Guid id, FleetDbContext db
 .WithName("GetVehiclePosition")
 .WithTags("Fleet");
 
-app.MapPost("/api/vehicles", async (CreateVehicleRequest request, FleetDbContext db) =>
+app.MapPost("/api/vehicles", async (UpsertVehicleRequest request, FleetDbContext db, IObjectStorage storage) =>
 {
-    if (string.IsNullOrWhiteSpace(request.PlateNumber) || string.IsNullOrWhiteSpace(request.OperatorName))
+    if (!PlateNumbers.TryNormalize(request.PlateNumber, out var plate, out var plateError))
     {
-        return Results.BadRequest(new { error = "plateNumber and operatorName are required" });
+        return Results.BadRequest(new { error = plateError });
     }
 
-    var exists = await db.Vehicles.AnyAsync(v => v.PlateNumber == request.PlateNumber);
-    if (exists)
+    if (string.IsNullOrWhiteSpace(request.OperatorName))
     {
-        return Results.Conflict(new { error = "vehicle with this plate already exists" });
+        return Results.BadRequest(new { error = "Укажите оператора (райпо)" });
+    }
+
+    var (photo, photoError) = await MediaPhotos.StoreAsync(
+        storage,
+        "vehicles",
+        request.PhotoDataUrl,
+        previousUrl: null,
+        clear: request.ClearPhoto == true);
+    if (photoError is not null)
+    {
+        return Results.BadRequest(new { error = photoError });
+    }
+
+    if (await db.Vehicles.AnyAsync(v => v.PlateNumber == plate))
+    {
+        return Results.Conflict(new { error = "Автолавка с таким номером уже есть" });
     }
 
     var vehicle = new Vehicle
     {
         Id = Guid.NewGuid(),
-        PlateNumber = request.PlateNumber.Trim(),
+        PlateNumber = plate,
         OperatorName = request.OperatorName.Trim(),
-        IsActive = true
+        DriverName = VehiclePhotos.TrimOrNull(request.DriverName),
+        DriverPhone = VehiclePhotos.TrimOrNull(request.DriverPhone),
+        SellerName = VehiclePhotos.TrimOrNull(request.SellerName),
+        SellerPhone = VehiclePhotos.TrimOrNull(request.SellerPhone),
+        OperatorPhone = VehiclePhotos.TrimOrNull(request.OperatorPhone),
+        DriverUserId = request.DriverUserId,
+        SellerUserId = request.SellerUserId,
+        PhotoDataUrl = photo,
+        IsActive = request.IsActive ?? true
     };
 
     db.Vehicles.Add(vehicle);
@@ -117,6 +148,66 @@ app.MapPost("/api/vehicles", async (CreateVehicleRequest request, FleetDbContext
 })
 .RequireAuthorization(policy => policy.RequireRole(Roles.Operator, Roles.Admin))
 .WithName("CreateVehicle")
+.WithTags("Fleet");
+
+app.MapPut("/api/vehicles/{id:guid}", async (Guid id, UpsertVehicleRequest request, FleetDbContext db, IObjectStorage storage) =>
+{
+    var vehicle = await db.Vehicles.FirstOrDefaultAsync(v => v.Id == id);
+    if (vehicle is null)
+    {
+        return Results.NotFound();
+    }
+
+    if (!PlateNumbers.TryNormalize(request.PlateNumber, out var plate, out var plateError))
+    {
+        return Results.BadRequest(new { error = plateError });
+    }
+
+    if (string.IsNullOrWhiteSpace(request.OperatorName))
+    {
+        return Results.BadRequest(new { error = "Укажите оператора (райпо)" });
+    }
+
+    var (photo, photoError) = await MediaPhotos.StoreAsync(
+        storage,
+        "vehicles",
+        request.ClearPhoto == true ? null : request.PhotoDataUrl,
+        vehicle.PhotoDataUrl,
+        clear: request.ClearPhoto == true);
+    if (photoError is not null)
+    {
+        return Results.BadRequest(new { error = photoError });
+    }
+
+    if (await db.Vehicles.AnyAsync(v => v.PlateNumber == plate && v.Id != id))
+    {
+        return Results.Conflict(new { error = "Автолавка с таким номером уже есть" });
+    }
+
+    vehicle.PlateNumber = plate;
+    vehicle.OperatorName = request.OperatorName.Trim();
+    vehicle.DriverName = VehiclePhotos.TrimOrNull(request.DriverName);
+    vehicle.DriverPhone = VehiclePhotos.TrimOrNull(request.DriverPhone);
+    vehicle.SellerName = VehiclePhotos.TrimOrNull(request.SellerName);
+    vehicle.SellerPhone = VehiclePhotos.TrimOrNull(request.SellerPhone);
+    vehicle.OperatorPhone = VehiclePhotos.TrimOrNull(request.OperatorPhone);
+    vehicle.DriverUserId = request.DriverUserId;
+    vehicle.SellerUserId = request.SellerUserId;
+    if (request.ClearPhoto == true || request.PhotoDataUrl is not null)
+    {
+        vehicle.PhotoDataUrl = photo;
+    }
+
+    if (request.IsActive is bool active)
+    {
+        vehicle.IsActive = active;
+    }
+
+    await db.SaveChangesAsync();
+    return Results.Ok(vehicle);
+})
+.RequireAuthorization(policy => policy.RequireRole(Roles.Operator, Roles.Admin))
+.WithName("UpdateVehicle")
 .WithTags("Fleet");
 
 app.MapPatch("/api/vehicles/{id:guid}/active", async (Guid id, SetActiveRequest request, FleetDbContext db) =>
@@ -218,6 +309,20 @@ public sealed record PositionIngestRequest(
     double? SpeedKmh,
     DateTimeOffset? RecordedAtUtc,
     string? Source);
+
+public sealed record UpsertVehicleRequest(
+    string PlateNumber,
+    string OperatorName,
+    string? DriverName = null,
+    string? DriverPhone = null,
+    string? SellerName = null,
+    string? SellerPhone = null,
+    string? OperatorPhone = null,
+    Guid? DriverUserId = null,
+    Guid? SellerUserId = null,
+    string? PhotoDataUrl = null,
+    bool? ClearPhoto = null,
+    bool? IsActive = null);
 
 public sealed record CreateVehicleRequest(string PlateNumber, string OperatorName);
 public sealed record SetActiveRequest(bool IsActive);

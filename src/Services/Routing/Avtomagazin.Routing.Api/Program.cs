@@ -13,6 +13,7 @@ builder.AddAvtomagazinDefaults(bus =>
 {
     bus.AddConsumer<VehiclePositionUpdatedConsumer>();
 });
+builder.AddAvtomagazinObjectStorage();
 
 var routingCs = DeploySecrets.ConnectionString(
     builder.Configuration,
@@ -82,6 +83,8 @@ using (var scope = app.Services.CreateScope())
                 "CreatedAtUtc" timestamp with time zone NOT NULL
             );
             """);
+        await db.Database.ExecuteSqlRawAsync(
+            """ALTER TABLE "Stops" ADD COLUMN IF NOT EXISTS "PhotoDataUrl" text""");
     }
     await Seed.EnsureSeedAsync(db);
 }
@@ -190,40 +193,97 @@ app.MapPatch("/api/routes/{routeId:guid}", async (Guid routeId, UpdateRouteReque
 .WithName("UpdateRoute")
 .WithTags("Routing");
 
-app.MapPut("/api/routes/{routeId:guid}/stops", async (
-    Guid routeId,
-    ReplaceStopsRequest request,
-    RoutingDbContext db) =>
+app.MapDelete("/api/routes/{routeId:guid}", async (Guid routeId, RoutingDbContext db) =>
 {
-    if (!await db.Routes.AnyAsync(r => r.Id == routeId))
+    var route = await db.Routes.Include(r => r.Stops).FirstOrDefaultAsync(r => r.Id == routeId);
+    if (route is null)
     {
         return Results.NotFound();
     }
 
-    // Bulk delete avoids EF RemoveRange+Clear generating DELETE+UPDATE on the same rows
-    await db.Stops.Where(s => s.RouteId == routeId).ExecuteDeleteAsync();
+    if (route.Stops.Count > 0)
+    {
+        db.Stops.RemoveRange(route.Stops);
+    }
 
-    var incoming = request.Stops ?? [];
+    db.Routes.Remove(route);
+    await db.SaveChangesAsync();
+    return Results.NoContent();
+})
+.RequireAuthorization(policy => policy.RequireRole(Roles.Operator, Roles.Admin))
+.WithName("DeleteRoute")
+.WithTags("Routing");
+
+app.MapPut("/api/routes/{routeId:guid}/stops", async (
+    Guid routeId,
+    ReplaceStopsRequest request,
+    RoutingDbContext db,
+    IObjectStorage storage) =>
+{
+    var route = await db.Routes.Include(r => r.Stops).FirstOrDefaultAsync(r => r.Id == routeId);
+    if (route is null)
+    {
+        return Results.NotFound();
+    }
+
+    var incoming = (request.Stops ?? [])
+        .Where(s => !string.IsNullOrWhiteSpace(s.SettlementName))
+        .OrderBy(s => s.Sequence <= 0 ? int.MaxValue : s.Sequence)
+        .ToList();
+
+    var keptIds = new HashSet<Guid>();
     var now = DateTimeOffset.UtcNow;
     var seq = 1;
-    foreach (var item in incoming.OrderBy(s => s.Sequence <= 0 ? int.MaxValue : s.Sequence))
+    foreach (var item in incoming)
     {
-        if (string.IsNullOrWhiteSpace(item.SettlementName))
+        RouteStop stop;
+        if (item.Id is Guid existingId
+            && existingId != Guid.Empty
+            && route.Stops.FirstOrDefault(s => s.Id == existingId) is { } found)
         {
-            continue;
+            stop = found;
+            keptIds.Add(existingId);
+        }
+        else
+        {
+            stop = new RouteStop
+            {
+                Id = Guid.NewGuid(),
+                RouteId = routeId,
+                SettlementName = "",
+                RegionCode = "BY-MI"
+            };
+            route.Stops.Add(stop);
+            keptIds.Add(stop.Id);
         }
 
-        db.Stops.Add(new RouteStop
+        stop.Sequence = seq++;
+        stop.SettlementName = item.SettlementName.Trim();
+        stop.RegionCode = string.IsNullOrWhiteSpace(item.RegionCode) ? "BY-MI" : item.RegionCode.Trim();
+        stop.Latitude = item.Latitude;
+        stop.Longitude = item.Longitude;
+        stop.PlannedArrivalUtc = (item.PlannedArrivalUtc ?? now.AddMinutes(15 * seq)).ToUniversalTime();
+        if (item.ClearPhoto == true || !string.IsNullOrWhiteSpace(item.PhotoDataUrl))
         {
-            Id = Guid.NewGuid(),
-            RouteId = routeId,
-            Sequence = seq++,
-            SettlementName = item.SettlementName.Trim(),
-            RegionCode = string.IsNullOrWhiteSpace(item.RegionCode) ? "BY-MI" : item.RegionCode.Trim(),
-            Latitude = item.Latitude,
-            Longitude = item.Longitude,
-            PlannedArrivalUtc = (item.PlannedArrivalUtc ?? now.AddMinutes(15 * seq)).ToUniversalTime()
-        });
+            var (photo, photoError) = await MediaPhotos.StoreAsync(
+                storage,
+                "stops",
+                item.ClearPhoto == true ? null : item.PhotoDataUrl,
+                stop.PhotoDataUrl,
+                clear: item.ClearPhoto == true);
+            if (photoError is not null)
+            {
+                return Results.BadRequest(new { error = $"«{stop.SettlementName}»: {photoError}" });
+            }
+
+            stop.PhotoDataUrl = photo;
+        }
+    }
+
+    var remove = route.Stops.Where(s => !keptIds.Contains(s.Id)).ToList();
+    if (remove.Count > 0)
+    {
+        db.Stops.RemoveRange(remove);
     }
 
     await db.SaveChangesAsync();
@@ -667,7 +727,9 @@ public sealed record ReplaceStopItem(
     string? RegionCode,
     double Latitude,
     double Longitude,
-    DateTimeOffset? PlannedArrivalUtc);
+    DateTimeOffset? PlannedArrivalUtc,
+    string? PhotoDataUrl = null,
+    bool? ClearPhoto = null);
 
 public sealed record CreateStopRequest(
     int Sequence,

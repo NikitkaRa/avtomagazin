@@ -45,6 +45,12 @@ public partial class LoginPage : ContentPage
         HighlightStaffRole();
     }
 
+    private void OnPickSeller(object? sender, EventArgs e)
+    {
+        _staffRole = "seller";
+        HighlightStaffRole();
+    }
+
     private void OnPickDispatcher(object? sender, EventArgs e)
     {
         _staffRole = "operator";
@@ -53,10 +59,15 @@ public partial class LoginPage : ContentPage
 
     private void HighlightStaffRole()
     {
-        DriverRoleButton.BackgroundColor = Color.FromArgb(_staffRole == "driver" ? "#3DBA7A" : "#1B3328");
-        DriverRoleButton.TextColor = Color.FromArgb(_staffRole == "driver" ? "#082014" : "#F3F7F3");
-        DispatcherRoleButton.BackgroundColor = Color.FromArgb(_staffRole == "operator" ? "#3DBA7A" : "#1B3328");
-        DispatcherRoleButton.TextColor = Color.FromArgb(_staffRole == "operator" ? "#082014" : "#F3F7F3");
+        PaintRole(DriverRoleButton, _staffRole == "driver");
+        PaintRole(SellerRoleButton, _staffRole == "seller");
+        PaintRole(DispatcherRoleButton, _staffRole == "operator");
+    }
+
+    private static void PaintRole(Button button, bool on)
+    {
+        button.BackgroundColor = Color.FromArgb(on ? "#3DBA7A" : "#1B3328");
+        button.TextColor = Color.FromArgb(on ? "#082014" : "#F3F7F3");
     }
 
     private async void OnLogin(object? sender, EventArgs e)
