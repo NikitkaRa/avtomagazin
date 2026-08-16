@@ -73,6 +73,10 @@ using (var scope = app.Services.CreateScope())
     if (seedDemo)
     {
         await Seed.EnsureDemoUsersAsync(db);
+        if (builder.Environment.IsDevelopment())
+        {
+            await Seed.EnsureHeatResidentsAsync(db);
+        }
     }
 
     await Seed.EnsureBootstrapAdminAsync(db, builder.Configuration);

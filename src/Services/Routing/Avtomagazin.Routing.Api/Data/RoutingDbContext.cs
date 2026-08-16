@@ -1,3 +1,4 @@
+using Avtomagazin.Contracts;
 using Microsoft.EntityFrameworkCore;
 
 namespace Avtomagazin.Routing.Api.Data;
@@ -238,6 +239,61 @@ public static class Seed
         }
 
         await EnsurePukhovichiRouteAsync(db);
+        await EnsureBelarusHeatRouteAsync(db);
+    }
+
+    private static async Task EnsureBelarusHeatRouteAsync(RoutingDbContext db)
+    {
+        var routeId = DemoHeatCatalog.HeatRouteId;
+        var route = await db.Routes.Include(r => r.Stops).FirstOrDefaultAsync(r => r.Id == routeId);
+        if (route is null)
+        {
+            route = new TradeRoute
+            {
+                Id = routeId,
+                Name = "Беларусь — демо избранного",
+                VehicleId = DemoHeatCatalog.HeatVehicleId
+            };
+            db.Routes.Add(route);
+            await db.SaveChangesAsync();
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        var places = DemoHeatCatalog.Places;
+        for (var i = 0; i < places.Count; i++)
+        {
+            var place = places[i];
+            var stopId = DemoHeatCatalog.StopId(i);
+            var jitterLat = ((i % 7) - 3) * 0.012;
+            var jitterLng = ((i % 5) - 2) * 0.015;
+            var stop = await db.Stops.FirstOrDefaultAsync(s => s.Id == stopId);
+            if (stop is null)
+            {
+                db.Stops.Add(new RouteStop
+                {
+                    Id = stopId,
+                    RouteId = routeId,
+                    Sequence = i + 1,
+                    SettlementName = place.Name,
+                    RegionCode = place.Region,
+                    Latitude = place.Lat + jitterLat,
+                    Longitude = place.Lng + jitterLng,
+                    PlannedArrivalUtc = now.AddMinutes(20 + i * 12)
+                });
+            }
+            else
+            {
+                stop.RouteId = routeId;
+                stop.Sequence = i + 1;
+                stop.SettlementName = place.Name;
+                stop.RegionCode = place.Region;
+                stop.Latitude = place.Lat + jitterLat;
+                stop.Longitude = place.Lng + jitterLng;
+                stop.PlannedArrivalUtc = now.AddMinutes(20 + i * 12);
+            }
+        }
+
+        await db.SaveChangesAsync();
     }
 
     private static async Task EnsurePukhovichiRouteAsync(RoutingDbContext db)

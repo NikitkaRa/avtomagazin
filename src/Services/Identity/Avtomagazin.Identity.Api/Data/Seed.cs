@@ -56,6 +56,49 @@ internal static class Seed
         await db.SaveChangesAsync();
     }
 
+    public static async Task EnsureHeatResidentsAsync(IdentityDbContext db)
+    {
+        var marker = DemoHeatCatalog.ResidentId(0);
+        if (await db.Users.AnyAsync(u => u.Id == marker))
+        {
+            return;
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        var proto = new AppUser
+        {
+            Id = marker,
+            Email = "heat0@demo.by",
+            DisplayName = "Житель",
+            Role = Roles.Resident,
+            Status = UserStatuses.Active,
+            PasswordHash = ""
+        };
+        var hash = Hasher.HashPassword(proto, "demo");
+        const int batch = 200;
+        for (var start = 0; start < DemoHeatCatalog.ResidentCount; start += batch)
+        {
+            var end = Math.Min(start + batch, DemoHeatCatalog.ResidentCount);
+            for (var i = start; i < end; i++)
+            {
+                db.Users.Add(new AppUser
+                {
+                    Id = DemoHeatCatalog.ResidentId(i),
+                    Email = $"heat{i}@demo.by",
+                    DisplayName = $"Житель {i + 1}",
+                    Role = Roles.Resident,
+                    Status = UserStatuses.Active,
+                    PasswordHash = hash,
+                    TokenVersion = 1,
+                    CreatedAtUtc = now,
+                    ApprovedAtUtc = now
+                });
+            }
+
+            await db.SaveChangesAsync();
+        }
+    }
+
     public static async Task EnsureBootstrapAdminAsync(IdentityDbContext db, IConfiguration config)
     {
         var email = config["Bootstrap:AdminEmail"]?.Trim().ToLowerInvariant();

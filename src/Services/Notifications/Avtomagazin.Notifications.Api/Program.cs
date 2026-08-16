@@ -73,6 +73,11 @@ using (var scope = app.Services.CreateScope())
                 WHERE "UserId" IS NOT NULL;
             """);
     }
+
+    if (app.Environment.IsDevelopment())
+    {
+        await HeatSeed.EnsureAsync(db);
+    }
 }
 
 app.MapPost("/api/devices/register", async (
