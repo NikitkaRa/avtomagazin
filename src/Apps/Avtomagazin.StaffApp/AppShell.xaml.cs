@@ -18,7 +18,7 @@ public partial class AppShell : Shell, IAppHost
     {
         var session = _services.GetRequiredService<Session>();
         Items.Clear();
-        if (session.IsDriver)
+        if (session.IsVanCrew)
         {
             Items.Add(ShellTabs.Create(("Рейс", _services.GetRequiredService<DrivePage>())));
             return;

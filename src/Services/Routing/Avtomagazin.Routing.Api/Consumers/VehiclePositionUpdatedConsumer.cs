@@ -29,6 +29,16 @@ public sealed class VehiclePositionUpdatedConsumer(
         var minutes = (int)Math.Ceiling(distanceKm / speed * 60);
         var eta = msg.RecordedAtUtc.AddMinutes(minutes);
 
+        // Alert once when ETA first enters the near window (or next stop changes).
+        const int alertWithinMinutes = 15;
+        var previous = await db.EtaSnapshots
+            .AsNoTracking()
+            .FirstOrDefaultAsync(e => e.VehicleId == msg.VehicleId, context.CancellationToken);
+        var crossedNearWindow = minutes <= alertWithinMinutes
+            && (previous is null
+                || previous.StopId != nextStop.Id
+                || previous.MinutesUntilArrival > alertWithinMinutes);
+
         var stale = db.EtaSnapshots.Where(e => e.VehicleId == msg.VehicleId);
         db.EtaSnapshots.RemoveRange(stale);
 
@@ -47,13 +57,16 @@ public sealed class VehiclePositionUpdatedConsumer(
         db.EtaSnapshots.Add(snapshot);
         await db.SaveChangesAsync(context.CancellationToken);
 
-        await bus.Publish(new StopArrivalEstimated(
-            msg.VehicleId,
-            route.Id,
-            nextStop.Id,
-            nextStop.SettlementName,
-            eta,
-            minutes), context.CancellationToken);
+        if (crossedNearWindow)
+        {
+            await bus.Publish(new StopArrivalEstimated(
+                msg.VehicleId,
+                route.Id,
+                nextStop.Id,
+                nextStop.SettlementName,
+                eta,
+                minutes), context.CancellationToken);
+        }
 
         logger.LogInformation(
             "ETA for {Settlement}: {Minutes} min (vehicle {Plate})",

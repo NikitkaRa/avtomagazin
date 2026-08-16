@@ -443,16 +443,41 @@ public sealed class AvtomagazinClient(HttpClient http, IAccessTokenAccessor? tok
 
     public async Task<SnapshotDto> GetSnapshotAsync(CancellationToken ct = default)
     {
-        var vehicles = await GetVehiclesAsync(ct);
-        var routes = await GetRoutesAsync(ct);
-        var eta = await GetEtaAsync(ct: ct);
-        return new SnapshotDto(DateTimeOffset.UtcNow, vehicles, routes, eta);
+        var vehiclesTask = GetVehiclesAsync(ct);
+        var routesTask = GetRoutesAsync(ct);
+        var etaTask = GetEtaAsync(ct: ct);
+        await Task.WhenAll(vehiclesTask, routesTask, etaTask);
+        return new SnapshotDto(
+            DateTimeOffset.UtcNow,
+            await vehiclesTask,
+            await routesTask,
+            await etaTask);
+    }
+
+    public async Task<DispatchSnapshotDto> GetDispatchSnapshotAsync(string? caseStatus = null, CancellationToken ct = default)
+    {
+        var vehiclesTask = GetVehiclesAsync(ct);
+        var casesTask = GetCasesAsync(caseStatus, ct);
+        var etaTask = GetEtaAsync(ct: ct);
+        var routesTask = GetRoutesAsync(ct);
+        await Task.WhenAll(vehiclesTask, casesTask, etaTask, routesTask);
+        return new DispatchSnapshotDto(
+            DateTimeOffset.UtcNow,
+            await vehiclesTask,
+            await casesTask,
+            await etaTask,
+            await routesTask);
     }
 
     private async Task<List<T>> GetListAsync<T>(string path, CancellationToken ct)
     {
-        ApplyAuth();
-        var response = await http.GetAsync(path, ct);
+        using var request = new HttpRequestMessage(HttpMethod.Get, path);
+        if (tokens?.AccessToken is { Length: > 0 } token)
+        {
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        }
+
+        var response = await http.SendAsync(request, ct);
         await EnsureSuccessAsync(response, ct);
         var items = await response.Content.ReadFromJsonAsync<List<T>>(JsonOptions, ct);
         return items ?? [];
@@ -690,3 +715,10 @@ public sealed record SnapshotDto(
     List<VehicleDto> Vehicles,
     List<RouteDto> Routes,
     List<EtaDto> Eta);
+
+public sealed record DispatchSnapshotDto(
+    DateTimeOffset SyncedAtUtc,
+    List<VehicleDto> Vehicles,
+    List<CaseSummaryDto> Cases,
+    List<EtaDto> Eta,
+    List<RouteDto> Routes);

@@ -92,8 +92,7 @@ else
             return;
         }
 
-        await Session.RestoreAsync();
-        if (!Session.IsAuthenticated)
+        if (!await Session.EnsureAuthenticatedAsync())
         {
             Nav.NavigateTo("/");
             return;

@@ -68,10 +68,17 @@
     private Guid _stopId;
     private bool _onTime = true;
 
-    protected override async Task OnInitializedAsync()
+    private bool _bootstrapped;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        await Session.RestoreAsync();
-        if (!Session.IsAuthenticated)
+        if (!firstRender || _bootstrapped)
+        {
+            return;
+        }
+
+        _bootstrapped = true;
+        if (!await Session.EnsureAuthenticatedAsync())
         {
             Nav.NavigateTo("/");
             return;
@@ -88,6 +95,8 @@
         {
             _error = ex.Message;
         }
+
+        await InvokeAsync(StateHasChanged);
     }
 
     private async Task RecordAsync()

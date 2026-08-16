@@ -16,6 +16,8 @@ public sealed class Session : IAccessTokenAccessor
     public bool IsAuthenticated => !string.IsNullOrWhiteSpace(AccessToken);
     public bool IsResident => Role == "resident";
     public bool IsDriver => Role == "driver";
+    public bool IsSeller => Role == "seller";
+    public bool IsVanCrew => Role is "driver" or "seller";
     public bool IsOperator => Role is "operator" or "admin";
     public string Platform => DeviceInfo.Platform == DevicePlatform.iOS ? "ios" : "android";
 

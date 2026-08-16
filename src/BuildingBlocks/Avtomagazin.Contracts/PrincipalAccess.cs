@@ -36,6 +36,7 @@ public static class PrincipalAccess
             return true;
         }
 
-        return user.Role() == Roles.Driver && user.AssignedVehicleId() == vehicleId;
+        return Roles.IsVanCrew(user.Role() ?? "")
+               && user.AssignedVehicleId() == vehicleId;
     }
 }

@@ -2,6 +2,7 @@ using System.Security.Claims;
 using Avtomagazin.Contracts;
 using Avtomagazin.Contracts.Events;
 using Avtomagazin.Fleet.Api;
+using Avtomagazin.Fleet.Api.Consumers;
 using Avtomagazin.Fleet.Api.Data;
 using Avtomagazin.Fleet.Api.Gps;
 using Avtomagazin.ServiceDefaults;
@@ -9,7 +10,7 @@ using MassTransit;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
-builder.AddAvtomagazinDefaults();
+builder.AddAvtomagazinDefaults(bus => bus.AddConsumer<StaffContactChangedConsumer>());
 builder.AddAvtomagazinObjectStorage();
 
 var fleetCs = DeploySecrets.ConnectionString(
@@ -131,16 +132,11 @@ app.MapPost("/api/vehicles", async (UpsertVehicleRequest request, FleetDbContext
         Id = Guid.NewGuid(),
         PlateNumber = plate,
         OperatorName = request.OperatorName.Trim(),
-        DriverName = VehiclePhotos.TrimOrNull(request.DriverName),
-        DriverPhone = VehiclePhotos.TrimOrNull(request.DriverPhone),
-        SellerName = VehiclePhotos.TrimOrNull(request.SellerName),
-        SellerPhone = VehiclePhotos.TrimOrNull(request.SellerPhone),
         OperatorPhone = VehiclePhotos.TrimOrNull(request.OperatorPhone),
-        DriverUserId = request.DriverUserId,
-        SellerUserId = request.SellerUserId,
         PhotoDataUrl = photo,
         IsActive = request.IsActive ?? true
     };
+    ApplyCrewSnapshot(vehicle, request);
 
     db.Vehicles.Add(vehicle);
     await db.SaveChangesAsync();
@@ -186,13 +182,8 @@ app.MapPut("/api/vehicles/{id:guid}", async (Guid id, UpsertVehicleRequest reque
 
     vehicle.PlateNumber = plate;
     vehicle.OperatorName = request.OperatorName.Trim();
-    vehicle.DriverName = VehiclePhotos.TrimOrNull(request.DriverName);
-    vehicle.DriverPhone = VehiclePhotos.TrimOrNull(request.DriverPhone);
-    vehicle.SellerName = VehiclePhotos.TrimOrNull(request.SellerName);
-    vehicle.SellerPhone = VehiclePhotos.TrimOrNull(request.SellerPhone);
+    ApplyCrewSnapshot(vehicle, request);
     vehicle.OperatorPhone = VehiclePhotos.TrimOrNull(request.OperatorPhone);
-    vehicle.DriverUserId = request.DriverUserId;
-    vehicle.SellerUserId = request.SellerUserId;
     if (request.ClearPhoto == true || request.PhotoDataUrl is not null)
     {
         vehicle.PhotoDataUrl = photo;
@@ -274,7 +265,7 @@ app.MapPost("/api/vehicles/{id:guid}/positions", async (
 
     return Results.Created($"/api/vehicles/{id}/position", position);
 })
-.RequireAuthorization(policy => policy.RequireRole(Roles.Driver, Roles.Operator, Roles.Admin))
+.RequireAuthorization(policy => policy.RequireRole(Roles.Driver, Roles.Seller, Roles.Operator, Roles.Admin))
 .WithName("IngestPosition")
 .WithTags("Fleet");
 
@@ -286,10 +277,20 @@ app.MapPatch("/api/vehicles/{id:guid}/contacts", async (Guid id, UpdateVehicleCo
         return Results.NotFound();
     }
 
-    vehicle.DriverName = TrimOrNull(request.DriverName);
-    vehicle.DriverPhone = TrimOrNull(request.DriverPhone);
-    vehicle.SellerName = TrimOrNull(request.SellerName);
-    vehicle.SellerPhone = TrimOrNull(request.SellerPhone);
+    // Driver/seller name+phone are snapshots of Identity when UserId is set.
+    // Free-text contacts remain only for vehicles without assigned staff users.
+    if (vehicle.DriverUserId is null)
+    {
+        vehicle.DriverName = TrimOrNull(request.DriverName);
+        vehicle.DriverPhone = TrimOrNull(request.DriverPhone);
+    }
+
+    if (vehicle.SellerUserId is null)
+    {
+        vehicle.SellerName = TrimOrNull(request.SellerName);
+        vehicle.SellerPhone = TrimOrNull(request.SellerPhone);
+    }
+
     vehicle.OperatorPhone = TrimOrNull(request.OperatorPhone);
     await db.SaveChangesAsync();
     return Results.Ok(vehicle);
@@ -297,6 +298,34 @@ app.MapPatch("/api/vehicles/{id:guid}/contacts", async (Guid id, UpdateVehicleCo
 .RequireAuthorization(policy => policy.RequireRole(Roles.Operator, Roles.Admin))
 .WithName("UpdateVehicleContacts")
 .WithTags("Fleet");
+
+static void ApplyCrewSnapshot(Vehicle vehicle, UpsertVehicleRequest request)
+{
+    vehicle.DriverUserId = request.DriverUserId;
+    if (request.DriverUserId is null)
+    {
+        vehicle.DriverName = null;
+        vehicle.DriverPhone = null;
+    }
+    else
+    {
+        // Snapshot at assignment time; kept in sync via StaffContactChanged.
+        vehicle.DriverName = VehiclePhotos.TrimOrNull(request.DriverName);
+        vehicle.DriverPhone = VehiclePhotos.TrimOrNull(request.DriverPhone);
+    }
+
+    vehicle.SellerUserId = request.SellerUserId;
+    if (request.SellerUserId is null)
+    {
+        vehicle.SellerName = null;
+        vehicle.SellerPhone = null;
+    }
+    else
+    {
+        vehicle.SellerName = VehiclePhotos.TrimOrNull(request.SellerName);
+        vehicle.SellerPhone = VehiclePhotos.TrimOrNull(request.SellerPhone);
+    }
+}
 
 static string? TrimOrNull(string? value)
     => string.IsNullOrWhiteSpace(value) ? null : value.Trim();

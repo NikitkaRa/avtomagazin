@@ -13,14 +13,6 @@
     </div>
 
     <div class="pulse">
-        <div class="pulse-item">
-            <span class="pulse-n">@_liveCount</span>
-            <span class="pulse-l">в эфире</span>
-        </div>
-        <div class="pulse-item">
-            <span class="pulse-n">@_signalCount</span>
-            <span class="pulse-l">с GPS</span>
-        </div>
         <div class="pulse-item @(_cases.Count > 0 ? "pulse-warn" : null)">
             <span class="pulse-n">@_cases.Sum(c => c.ReportCount)</span>
             <span class="pulse-l">жалобы</span>
@@ -91,19 +83,26 @@
             <ul class="feed">
                 @foreach (var row in ActiveRoutes)
                 {
-                    <li class="feed-row @(row.DelayMinutes is > 5 ? "warn" : null)">
-                        <div>
-                            <strong>@row.RouteName</strong>
-                            <span class="feed-sub">
-                                @row.Plate
-                                @if (!string.IsNullOrEmpty(row.NextStop))
-                                {
-                                    <text> · след. @row.NextStop</text>
-                                }
-                            </span>
+                    <li class="feed-row @(row.IsLate ? "route-late" : null)">
+                        <div class="route-line">
+                            @if (row.HasGps)
+                            {
+                                <span class="gps-pill @(row.Live ? "gps-live" : "gps-stale")"
+                                      title="@(row.Live ? "Эфир GPS" : "Последний GPS")">GPS</span>
+                            }
+                            <div>
+                                <strong>@row.RouteName</strong>
+                                <span class="feed-sub">
+                                    @row.Plate
+                                    @if (!string.IsNullOrEmpty(row.NextStop))
+                                    {
+                                        <text> · след. @row.NextStop</text>
+                                    }
+                                </span>
+                            </div>
                         </div>
                         <div class="feed-side">
-                            <span class="@(row.DelayMinutes is > 5 ? "eta-min" : null)">@row.DelayLabel</span>
+                            <span class="@(row.IsLate ? "route-late-badge" : null)">@row.DelayLabel</span>
                             @if (!string.IsNullOrEmpty(row.ScheduleLabel))
                             {
                                 <time>@row.ScheduleLabel</time>
@@ -248,9 +247,7 @@
     private bool _busy;
     private CancellationTokenSource? _poll;
 
-    private int _liveCount => _vans.Count(IsLive);
-    private int _signalCount => _vans.Count(v => v.LastLatitude is not null);
-    private int _delayedCount => ActiveRoutes.Count(r => r.DelayMinutes is > 5);
+    private int _delayedCount => ActiveRoutes.Count(r => r.IsLate);
 
     private IEnumerable<CaseSummaryDto> FilteredCases
     {
@@ -348,12 +345,15 @@
                     delay,
                     delayLabel,
                     scheduleLabel,
-                    IsLive(van)));
+                    IsLive(van),
+                    van.LastLatitude is not null));
             }
 
             return rows
-                .OrderByDescending(r => r.DelayMinutes ?? int.MinValue)
+                .OrderByDescending(r => r.IsLate)
+                .ThenByDescending(r => r.DelayMinutes ?? int.MinValue)
                 .ThenByDescending(r => r.Live)
+                .ThenByDescending(r => r.HasGps)
                 .ThenBy(r => r.RouteName);
         }
     }
@@ -384,21 +384,30 @@
 
     private async Task ReloadAsync()
     {
-        _vans = await Api.GetVehiclesAsync();
+        var status = _statusFilter switch
+        {
+            "active" => "open,in_progress",
+            "all" => "open,in_progress,closed",
+            _ => _statusFilter
+        };
+
         try
         {
-            var status = _statusFilter switch
-            {
-                "active" => "open,in_progress",
-                "all" => "open,in_progress,closed",
-                _ => _statusFilter
-            };
-            _cases = await Api.GetCasesAsync(status);
-            _etas = await Api.GetEtaAsync();
-            _routes = await Api.GetRoutesAsync();
+            var snap = await Api.GetDispatchSnapshotAsync(status);
+            _vans = snap.Vehicles;
+            _cases = snap.Cases;
+            _etas = snap.Eta;
+            _routes = snap.Routes;
         }
         catch
         {
+            try
+            {
+                _vans = await Api.GetVehiclesAsync();
+            }
+            catch
+            {
+            }
         }
     }
 
@@ -579,5 +588,9 @@
         int? DelayMinutes,
         string DelayLabel,
         string ScheduleLabel,
-        bool Live);
+        bool Live,
+        bool HasGps)
+    {
+        public bool IsLate => DelayMinutes is > 2;
+    }
 }

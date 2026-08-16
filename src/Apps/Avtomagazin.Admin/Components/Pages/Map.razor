@@ -33,10 +33,17 @@
     private int _liveCount => _vans.Count(IsLive);
     private int _signalCount => _vans.Count(v => v.LastLatitude is not null);
 
-    protected override async Task OnInitializedAsync()
+    private bool _bootstrapped;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        await Session.RestoreAsync();
-        if (!Session.IsAuthenticated || Session.IsDriver)
+        if (!firstRender || _bootstrapped)
+        {
+            return;
+        }
+
+        _bootstrapped = true;
+        if (!await Session.EnsureAuthenticatedAsync() || Session.IsVanCrew)
         {
             Nav.NavigateTo("/");
             return;
@@ -45,14 +52,7 @@
         await ReloadAsync();
         _poll = new CancellationTokenSource();
         _ = LoopAsync(_poll.Token);
-    }
-
-    protected override async Task OnAfterRenderAsync(bool firstRender)
-    {
-        if (!firstRender || _mapReady)
-        {
-            return;
-        }
+        await InvokeAsync(StateHasChanged);
 
         try
         {

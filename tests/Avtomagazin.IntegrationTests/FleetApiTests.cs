@@ -78,12 +78,15 @@ public class FleetApiTests : IClassFixture<FleetApiFactory>
     public async Task Operator_can_create_vehicle()
     {
         using var client = TestJwt.Client(_factory, Roles.Operator);
-        var plate = $"OP-{Guid.NewGuid():N}"[..10];
+        var plate = $"{Random.Shared.Next(1000, 9999)} QQ-{Random.Shared.Next(0, 9)}";
         var response = await client.PostAsJsonAsync("/api/vehicles", new
         {
             plateNumber = plate,
             operatorName = "Райпо"
         });
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Contains(plate, body, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Райпо", body);
     }
 }

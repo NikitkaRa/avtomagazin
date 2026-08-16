@@ -13,6 +13,7 @@ builder.AddAvtomagazinDefaults(bus =>
 {
     bus.AddConsumer<DriverArrivedAtStopConsumer>();
     bus.AddConsumer<ScheduleChangedConsumer>();
+    bus.AddConsumer<StopArrivalEstimatedConsumer>();
 });
 
 var notificationsCs = DeploySecrets.ConnectionString(

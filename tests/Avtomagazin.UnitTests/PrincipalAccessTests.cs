@@ -18,6 +18,18 @@ public class PrincipalAccessTests
     }
 
     [Fact]
+    public void Seller_writes_only_assigned_van()
+    {
+        var van = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+        var other = Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
+        var seller = Principal(Roles.Seller, van);
+
+        Assert.True(seller.CanWriteVehicle(van));
+        Assert.False(seller.CanWriteVehicle(other));
+        Assert.False(seller.CanDispatch());
+    }
+
+    [Fact]
     public void Dispatcher_writes_any_van()
     {
         var van = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");

@@ -27,8 +27,13 @@ public sealed class StaffSession : IAccessTokenAccessor
 
     public bool IsAuthenticated => Role is not null && AccessToken is { Length: > 0 };
     public bool IsDriver => Role == "driver";
+    public bool IsSeller => Role == "seller";
+    public bool IsVanCrew => Role is "driver" or "seller";
     public bool IsAdmin => Role == "admin";
     public bool IsOperator => Role is "operator" or "admin";
+
+    /// <summary>True after browser storage was read (or sign-in/out). False while JS/circuit is not ready.</summary>
+    public bool IsRestored => _restored;
 
     public SignOutReason? LastSignOutReason { get; private set; }
 
@@ -57,8 +62,15 @@ public sealed class StaffSession : IAccessTokenAccessor
         }
         catch (InvalidOperationException)
         {
-            // JS isn't ready until the circuit is connected.
+            // JS isn't ready until the circuit is connected — do not mark restored.
         }
+    }
+
+    /// <summary>Restore from browser storage when possible. Returns false if not signed in (only after restore).</summary>
+    public async Task<bool> EnsureAuthenticatedAsync()
+    {
+        await RestoreAsync();
+        return IsRestored && IsAuthenticated;
     }
 
     private async Task<bool> TryRestoreAsync(ValueTask<ProtectedBrowserStorageResult<StaffSnapshot>> pending)
@@ -86,6 +98,7 @@ public sealed class StaffSession : IAccessTokenAccessor
         AccessToken = accessToken;
         _remember = remember;
         _restored = true;
+        LastSignOutReason = null;
         Persist();
         Changed?.Invoke();
     }

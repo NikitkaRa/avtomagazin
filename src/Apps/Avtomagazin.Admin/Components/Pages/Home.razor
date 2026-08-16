@@ -2,11 +2,15 @@
 @inject StaffSession Session
 @implements IDisposable
 
-@if (!Session.IsAuthenticated)
+@if (!_ready)
+{
+    <p class="muted">Загрузка…</p>
+}
+else if (!Session.IsAuthenticated)
 {
     <LoginPanel />
 }
-else if (Session.IsDriver)
+else if (Session.IsVanCrew)
 {
     <DrivePanel />
 }
@@ -16,10 +20,23 @@ else
 }
 
 @code {
-    protected override async Task OnInitializedAsync()
+    private bool _ready;
+
+    protected override void OnInitialized()
     {
         Session.Changed += OnChanged;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _ready)
+        {
+            return;
+        }
+
         await Session.RestoreAsync();
+        _ready = Session.IsRestored;
+        await InvokeAsync(StateHasChanged);
     }
 
     private void OnChanged() => InvokeAsync(StateHasChanged);

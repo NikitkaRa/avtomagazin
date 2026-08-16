@@ -93,17 +93,16 @@
 
     private async Task ReloadAsync()
     {
-        var vans = await Api.GetVehiclesAsync();
+        var snap = await Api.GetSnapshotAsync();
         var id = Session.VehicleId ?? Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
-        _vehicle = vans.FirstOrDefault(v => v.Id == id) ?? vans.FirstOrDefault();
-        var etas = await Api.GetEtaAsync();
-        _next = etas.Where(e => _vehicle is null || e.VehicleId == _vehicle.Id)
+        _vehicle = snap.Vehicles.FirstOrDefault(v => v.Id == id) ?? snap.Vehicles.FirstOrDefault();
+        _next = snap.Eta
+            .Where(e => _vehicle is null || e.VehicleId == _vehicle.Id)
             .OrderBy(e => e.MinutesUntilArrival)
             .FirstOrDefault();
-        var routes = await Api.GetRoutesAsync();
-        _stops = routes
+        _stops = snap.Routes
             .Where(r => _vehicle is null || r.VehicleId == _vehicle.Id)
-            .SelectMany(r => r.Stops)
+            .SelectMany(r => r.Stops ?? [])
             .OrderBy(s => s.Sequence)
             .ToList();
     }

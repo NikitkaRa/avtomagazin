@@ -659,6 +659,42 @@ html, body {
     border-bottom: 1px solid var(--line);
 }
 .feed-row:last-child { border-bottom: 0; }
+.feed-row.route-late {
+    background: rgba(154, 75, 46, 0.08);
+    border-left: 3px solid rgba(154, 75, 46, 0.45);
+}
+.feed-row.route-late + .feed-row.route-late {
+    border-top-color: rgba(154, 75, 46, 0.12);
+}
+.route-late-badge {
+    color: var(--warn);
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+}
+.route-line {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.55rem;
+    min-width: 0;
+}
+.gps-pill {
+    flex-shrink: 0;
+    margin-top: 0.15rem;
+    font-size: 0.62rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    padding: 0.18rem 0.4rem;
+    border-radius: 6px;
+    line-height: 1.2;
+}
+.gps-pill.gps-live {
+    color: #0d4a2c;
+    background: rgba(31, 122, 77, 0.16);
+}
+.gps-pill.gps-stale {
+    color: #5a655e;
+    background: rgba(21, 32, 26, 0.08);
+}
 .attn-tools {
     display: flex;
     flex-direction: column;

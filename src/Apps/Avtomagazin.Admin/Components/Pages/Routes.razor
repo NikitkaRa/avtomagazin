@@ -64,16 +64,24 @@ else
     private List<RouteDto> _routes = [];
     private List<VehicleDto> _vehicles = [];
 
-    protected override async Task OnInitializedAsync()
+    private bool _bootstrapped;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        await Session.RestoreAsync();
-        if (!Session.IsAuthenticated)
+        if (!firstRender || _bootstrapped)
+        {
+            return;
+        }
+
+        _bootstrapped = true;
+        if (!await Session.EnsureAuthenticatedAsync())
         {
             Nav.NavigateTo("/");
             return;
         }
 
         await ReloadAsync();
+        await InvokeAsync(StateHasChanged);
     }
 
     private async Task ReloadAsync()

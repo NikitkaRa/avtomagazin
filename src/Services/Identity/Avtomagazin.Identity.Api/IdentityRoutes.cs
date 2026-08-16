@@ -1,8 +1,10 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using Avtomagazin.Contracts;
+using Avtomagazin.Contracts.Events;
 using Avtomagazin.Identity.Api.Data;
 using Avtomagazin.ServiceDefaults;
+using MassTransit;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -229,7 +231,8 @@ internal static class IdentityRoutes
         [FromBody] UpdateProfileRequest request,
         ClaimsPrincipal principal,
         IdentityDbContext db,
-        IObjectStorage storage)
+        IObjectStorage storage,
+        IPublishEndpoint bus)
     {
         if (principal.UserId() is not Guid id)
         {
@@ -290,6 +293,7 @@ internal static class IdentityRoutes
         }
 
         await db.SaveChangesAsync();
+        await bus.Publish(new StaffContactChanged(user.Id, user.DisplayName, user.Phone));
         return Results.Ok(ProfilePayload(user));
     }
 

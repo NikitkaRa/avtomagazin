@@ -167,25 +167,29 @@
         public bool PhotoDirty { get; set; }
     }
 
-    protected override async Task OnInitializedAsync()
-    {
-        await Session.RestoreAsync();
-        if (!Session.IsAuthenticated)
-        {
-            Nav.NavigateTo("/");
-            return;
-        }
-
-        _vehicles = await Api.GetVehiclesAsync();
-        if (!IsNew)
-        {
-            await LoadRouteAsync();
-        }
-    }
+    private bool _bootstrapped;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!firstRender || _mapReady)
+        if (firstRender && !_bootstrapped)
+        {
+            _bootstrapped = true;
+            if (!await Session.EnsureAuthenticatedAsync())
+            {
+                Nav.NavigateTo("/");
+                return;
+            }
+
+            _vehicles = await Api.GetVehiclesAsync();
+            if (!IsNew)
+            {
+                await LoadRouteAsync();
+            }
+
+            await InvokeAsync(StateHasChanged);
+        }
+
+        if (!firstRender || _mapReady || !_bootstrapped || !Session.IsAuthenticated)
         {
             return;
         }

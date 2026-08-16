@@ -415,7 +415,7 @@ app.MapPost("/api/coverage/visit", async (
 
     return Results.Created($"/api/coverage/{visit.Id}", visit);
 })
-.RequireAuthorization(policy => policy.RequireRole(Roles.Driver, Roles.Operator, Roles.Admin))
+.RequireAuthorization(policy => policy.RequireRole(Roles.Driver, Roles.Seller, Roles.Operator, Roles.Admin))
 .WithName("RecordCoverageVisit")
 .WithTags("Coverage");
 
@@ -471,7 +471,7 @@ app.MapPost("/api/stops/{stopId:guid}/arrived", async (
 
     return Results.Ok(new { visit.Id, stop.SettlementName, arrivedAt, withinScheduledWindow = onTime });
 })
-.RequireAuthorization(policy => policy.RequireRole(Roles.Driver, Roles.Operator, Roles.Admin))
+.RequireAuthorization(policy => policy.RequireRole(Roles.Driver, Roles.Seller, Roles.Operator, Roles.Admin))
 .WithName("DriverArrivedAtStop")
 .WithTags("Routing");
 
@@ -543,7 +543,7 @@ app.MapGet("/api/presence-reports", async (RoutingDbContext db) =>
             r.ReportedAtUtc
         })
         .ToListAsync())
-.RequireAuthorization(policy => policy.RequireRole(Roles.Driver, Roles.Operator, Roles.Admin))
+.RequireAuthorization(policy => policy.RequireRole(Roles.Driver, Roles.Seller, Roles.Operator, Roles.Admin))
 .WithName("ListPresenceReports")
 .WithTags("Routing");
 
@@ -580,7 +580,7 @@ app.MapGet("/api/cases", async (string? status, RoutingDbContext db) =>
         .ToListAsync();
     return Results.Ok(items);
 })
-.RequireAuthorization(policy => policy.RequireRole(Roles.Driver, Roles.Operator, Roles.Admin))
+.RequireAuthorization(policy => policy.RequireRole(Roles.Driver, Roles.Seller, Roles.Operator, Roles.Admin))
 .WithName("ListCases")
 .WithTags("Cases");
 
@@ -591,7 +591,7 @@ app.MapGet("/api/cases/{id:guid}", async (Guid id, RoutingDbContext db) =>
         .FirstOrDefaultAsync(c => c.Id == id);
     return item is null ? Results.NotFound() : Results.Ok(item);
 })
-.RequireAuthorization(policy => policy.RequireRole(Roles.Driver, Roles.Operator, Roles.Admin))
+.RequireAuthorization(policy => policy.RequireRole(Roles.Driver, Roles.Seller, Roles.Operator, Roles.Admin))
 .WithName("GetCase")
 .WithTags("Cases");
 
@@ -702,7 +702,7 @@ app.MapGet("/api/coverage", async (string? regionCode, RoutingDbContext db) =>
 
     return Results.Ok(await query.OrderByDescending(v => v.ArrivedAtUtc).Take(100).ToListAsync());
 })
-.RequireAuthorization(policy => policy.RequireRole(Roles.Driver, Roles.Operator, Roles.Admin))
+.RequireAuthorization(policy => policy.RequireRole(Roles.Driver, Roles.Seller, Roles.Operator, Roles.Admin))
 .WithName("ListCoverage")
 .WithTags("Coverage");
 
