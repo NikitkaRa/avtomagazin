@@ -46,27 +46,40 @@ public sealed class HttpSessionGuard(
 
                 using var response = await http.SendAsync(request, ct);
                 var json = new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-                if (!response.IsSuccessStatusCode)
+                if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
                 {
-                    entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromSeconds(2);
                     return new SessionSnapshot(UserStatuses.Disabled, -1);
                 }
 
-                return await response.Content.ReadFromJsonAsync<SessionSnapshot>(json, ct)
-                       ?? new SessionSnapshot(UserStatuses.Disabled, -1);
+                if (!response.IsSuccessStatusCode)
+                {
+                    entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromSeconds(2);
+                    return new SessionSnapshot(UserStatuses.Active, claimed, Unreachable: true);
+                }
+
+                var identity = await response.Content.ReadFromJsonAsync<IdentitySession>(json, ct);
+                return identity is null
+                    ? new SessionSnapshot(UserStatuses.Disabled, -1)
+                    : new SessionSnapshot(identity.Status, identity.TokenVersion);
             });
 
-            return snapshot is not null
-                   && snapshot.Status == UserStatuses.Active
+            if (snapshot is null || snapshot.Unreachable)
+            {
+                return true;
+            }
+
+            return snapshot.Status == UserStatuses.Active
                    && snapshot.TokenVersion == claimed;
         }
         catch
         {
-            return false;
+            return true;
         }
     }
 
-    private sealed record SessionSnapshot(string Status, int TokenVersion);
+    private sealed record IdentitySession(string Status, int TokenVersion);
+
+    private sealed record SessionSnapshot(string Status, int TokenVersion, bool Unreachable = false);
 }
 
 public static class DeploySecrets

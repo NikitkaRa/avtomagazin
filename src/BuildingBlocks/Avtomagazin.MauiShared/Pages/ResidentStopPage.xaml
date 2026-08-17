@@ -8,6 +8,7 @@
         <Label x:Name="TitleLabel" FontSize="26" FontAttributes="Bold" TextColor="#F3F7F3" />
         <Label x:Name="PlanLabel" TextColor="#A7B8AD" />
         <Label x:Name="WindowLabel" TextColor="#A7B8AD" />
+        <Label x:Name="DriverNoteLabel" TextColor="#F0C7B0" FontSize="14" IsVisible="False" />
         <Button x:Name="FavoriteButton" Clicked="OnFavorite" BackgroundColor="#3DBA7A" TextColor="#082014" />
         <Button Text="На месте" Clicked="OnSite" BackgroundColor="#1B3328" TextColor="#F3F7F3" />
         <Button Text="Не приехала" Clicked="OnNoShow" BackgroundColor="#1B3328" TextColor="#F3F7F3" />

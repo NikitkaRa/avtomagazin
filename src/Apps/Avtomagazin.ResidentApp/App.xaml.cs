@@ -1,4 +1,5 @@
-﻿using Microsoft.Extensions.DependencyInjection;
+﻿using Avtomagazin.MauiShared;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Avtomagazin.ResidentApp;
 
@@ -13,5 +14,9 @@ public partial class App : Application
     }
 
     protected override Window CreateWindow(IActivationState? activationState)
-        => new(_services.GetRequiredService<AppShell>());
+    {
+        var shell = _services.GetRequiredService<AppShell>();
+        SessionGate.Apply(_services, shell);
+        return new Window(shell);
+    }
 }

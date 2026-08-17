@@ -244,11 +244,14 @@ public sealed class AvtomagazinClient(HttpClient http, IAccessTokenAccessor? tok
             $"fleet/api/vehicles/{vehicleId}/positions",
             new { latitude, longitude, speedKmh, source = "driver-app" },
             ct);
-        response.EnsureSuccessStatusCode();
+        await EnsureSuccessAsync(response, ct);
     }
 
     public Task<List<RouteDto>> GetRoutesAsync(CancellationToken ct = default)
-        => GetListAsync<RouteDto>("routing/api/routes", ct);
+        => GetRoutesAsync(catalog: false, ct);
+
+    public Task<List<RouteDto>> GetRoutesAsync(bool catalog, CancellationToken ct = default)
+        => GetListAsync<RouteDto>(catalog ? "routing/api/routes?catalog=true" : "routing/api/routes", ct);
 
     public async Task<RouteDto?> GetRouteAsync(Guid routeId, CancellationToken ct = default)
     {
@@ -325,6 +328,23 @@ public sealed class AvtomagazinClient(HttpClient http, IAccessTokenAccessor? tok
         return GetListAsync<EtaDto>(path, ct);
     }
 
+    public Task<List<DriverNoteDto>> GetDriverNotesAsync(CancellationToken ct = default)
+        => GetListAsync<DriverNoteDto>("routing/api/driver-notes", ct);
+
+    public async Task PostDriverNoteAsync(PostDriverNoteRequest request, CancellationToken ct = default)
+    {
+        ApplyAuth();
+        var response = await http.PostAsJsonAsync("routing/api/driver-notes", request, JsonOptions, ct);
+        await EnsureSuccessAsync(response, ct);
+    }
+
+    public async Task ClearDriverNoteAsync(Guid vehicleId, CancellationToken ct = default)
+    {
+        ApplyAuth();
+        var response = await http.DeleteAsync($"routing/api/driver-notes/{vehicleId}", ct);
+        await EnsureSuccessAsync(response, ct);
+    }
+
     public Task<List<RouteStopDto>> FindStopsAsync(string settlement, CancellationToken ct = default)
         => GetListAsync<RouteStopDto>($"routing/api/stops/{Uri.EscapeDataString(settlement)}", ct);
 
@@ -343,10 +363,13 @@ public sealed class AvtomagazinClient(HttpClient http, IAccessTokenAccessor? tok
         response.EnsureSuccessStatusCode();
     }
 
-    public async Task ArriveAtStopAsync(Guid stopId, Guid vehicleId, CancellationToken ct = default)
+    public async Task ArriveAtStopAsync(Guid stopId, Guid vehicleId, bool skipped = false, CancellationToken ct = default)
     {
         ApplyAuth();
-        var response = await http.PostAsJsonAsync($"routing/api/stops/{stopId}/arrived", new { vehicleId }, ct);
+        var response = await http.PostAsJsonAsync(
+            $"routing/api/stops/{stopId}/arrived",
+            new { vehicleId, skipped },
+            ct);
         response.EnsureSuccessStatusCode();
     }
 
@@ -443,15 +466,36 @@ public sealed class AvtomagazinClient(HttpClient http, IAccessTokenAccessor? tok
 
     public async Task<SnapshotDto> GetSnapshotAsync(CancellationToken ct = default)
     {
-        var vehiclesTask = GetVehiclesAsync(ct);
-        var routesTask = GetRoutesAsync(ct);
-        var etaTask = GetEtaAsync(ct: ct);
-        await Task.WhenAll(vehiclesTask, routesTask, etaTask);
+        var vehiclesTask = SafeListAsync(() => GetVehiclesAsync(ct));
+        var routesTask = SafeListAsync(() => GetRoutesAsync(ct));
+        var etaTask = SafeListAsync(() => GetEtaAsync(ct: ct));
+        var notesTask = SafeListAsync(() => GetDriverNotesAsync(ct));
+        await Task.WhenAll(vehiclesTask, routesTask, etaTask, notesTask);
+        var vehicles = await vehiclesTask;
+        var routes = await routesTask;
+        if (vehicles.Count == 0 && routes.Count == 0)
+        {
+            throw new HttpRequestException("Нет ответа от сервера (авто и маршруты недоступны)");
+        }
+
         return new SnapshotDto(
             DateTimeOffset.UtcNow,
-            await vehiclesTask,
-            await routesTask,
-            await etaTask);
+            vehicles,
+            routes,
+            await etaTask,
+            await notesTask);
+    }
+
+    private static async Task<List<T>> SafeListAsync<T>(Func<Task<List<T>>> load)
+    {
+        try
+        {
+            return await load();
+        }
+        catch
+        {
+            return [];
+        }
     }
 
     public async Task<DispatchSnapshotDto> GetDispatchSnapshotAsync(string? caseStatus = null, CancellationToken ct = default)
@@ -460,13 +504,15 @@ public sealed class AvtomagazinClient(HttpClient http, IAccessTokenAccessor? tok
         var casesTask = GetCasesAsync(caseStatus, ct);
         var etaTask = GetEtaAsync(ct: ct);
         var routesTask = GetRoutesAsync(ct);
-        await Task.WhenAll(vehiclesTask, casesTask, etaTask, routesTask);
+        var notesTask = SafeListAsync(() => GetDriverNotesAsync(ct));
+        await Task.WhenAll(vehiclesTask, casesTask, etaTask, routesTask, notesTask);
         return new DispatchSnapshotDto(
             DateTimeOffset.UtcNow,
             await vehiclesTask,
             await casesTask,
             await etaTask,
-            await routesTask);
+            await routesTask,
+            await notesTask);
     }
 
     private async Task<List<T>> GetListAsync<T>(string path, CancellationToken ct)
@@ -594,7 +640,9 @@ public sealed record RouteStopDto(
     double Latitude,
     double Longitude,
     DateTimeOffset PlannedArrivalUtc,
-    string? PhotoDataUrl = null);
+    string? PhotoDataUrl = null,
+    DateTimeOffset? ArrivedAtUtc = null,
+    bool Skipped = false);
 
 public sealed record CreateRouteRequest(string Name, Guid VehicleId);
 
@@ -635,7 +683,22 @@ public sealed record EtaDto(
     string SettlementName,
     DateTimeOffset EstimatedArrivalUtc,
     int MinutesUntilArrival,
-    DateTimeOffset CalculatedAtUtc);
+    DateTimeOffset CalculatedAtUtc,
+    double? DistanceKm = null);
+
+public sealed record DriverNoteDto(
+    Guid Id,
+    Guid VehicleId,
+    string Body,
+    double Latitude,
+    double Longitude,
+    DateTimeOffset CreatedAtUtc);
+
+public sealed record PostDriverNoteRequest(
+    Guid VehicleId,
+    string Body,
+    double? Latitude,
+    double? Longitude);
 
 public sealed record CoverageDto(
     Guid Id,
@@ -714,11 +777,13 @@ public sealed record SnapshotDto(
     DateTimeOffset? SyncedAtUtc,
     List<VehicleDto> Vehicles,
     List<RouteDto> Routes,
-    List<EtaDto> Eta);
+    List<EtaDto> Eta,
+    List<DriverNoteDto>? DriverNotes = null);
 
 public sealed record DispatchSnapshotDto(
     DateTimeOffset SyncedAtUtc,
     List<VehicleDto> Vehicles,
     List<CaseSummaryDto> Cases,
     List<EtaDto> Eta,
-    List<RouteDto> Routes);
+    List<RouteDto> Routes,
+    List<DriverNoteDto> DriverNotes);

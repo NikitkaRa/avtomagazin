@@ -15,6 +15,9 @@ public static class GeoMath
         return earth * 2 * Math.Atan2(Math.Sqrt(a), Math.Sqrt(1 - a));
     }
 
+    public static double DistanceMeters(double lat1, double lon1, double lat2, double lon2)
+        => DistanceKm(lat1, lon1, lat2, lon2) * 1000;
+
     public static RouteStopDto? Nearest(IEnumerable<RouteStopDto> stops, double lat, double lng)
         => stops.OrderBy(s => DistanceKm(lat, lng, s.Latitude, s.Longitude)).FirstOrDefault();
 

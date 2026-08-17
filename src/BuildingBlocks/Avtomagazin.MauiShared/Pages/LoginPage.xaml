@@ -4,61 +4,150 @@
              x:Class="Avtomagazin.MauiShared.LoginPage"
              Shell.NavBarIsVisible="False"
              BackgroundColor="#12241C">
-    <ScrollView>
-        <VerticalStackLayout Padding="24,48,24,24" Spacing="10" MaximumWidthRequest="420">
-            <Label x:Name="EnvLabel" TextColor="#6B7F74" FontSize="12" />
-            <Label x:Name="TitleLabel" FontSize="32" FontAttributes="Bold" TextColor="#F3F7F3" />
-            <Label x:Name="SubtitleLabel" TextColor="#A7B8AD" Margin="0,0,0,12" />
+    <Grid x:Name="RootGrid">
+        <Image x:Name="BgImage"
+               Source="login_bg.png"
+               Aspect="AspectFill"
+               InputTransparent="True"
+               HorizontalOptions="Fill"
+               VerticalOptions="Fill" />
+        <BoxView Color="#07140F"
+                 Opacity="0.22"
+                 InputTransparent="True"
+                 HorizontalOptions="Fill"
+                 VerticalOptions="Fill" />
 
-            <Label Text="Email" TextColor="#A7B8AD" />
-            <Entry x:Name="EmailEntry"
-                   Keyboard="Email"
-                   Placeholder="email"
-                   PlaceholderColor="#6B7F74"
-                   TextColor="#F3F7F3"
-                   BackgroundColor="#1B3328"
-                   HeightRequest="48" />
+        <ScrollView VerticalOptions="Fill"
+                    HorizontalOptions="Fill"
+                    Padding="0">
+            <Grid Padding="20,48,20,28"
+                  MinimumHeightRequest="640"
+                  VerticalOptions="Fill">
+                <Border StrokeThickness="0"
+                        BackgroundColor="#B312241C"
+                        StrokeShape="RoundRectangle 20"
+                        Padding="22,26"
+                        MaximumWidthRequest="400"
+                        VerticalOptions="Center"
+                        HorizontalOptions="Fill">
+                    <VerticalStackLayout Spacing="12">
+                        <Label Text="Автолавка"
+                               FontSize="32"
+                               FontAttributes="Bold"
+                               TextColor="#C9D9CF"
+                               HorizontalTextAlignment="Center" />
+                        <Label x:Name="TitleLabel"
+                               FontSize="15"
+                               TextColor="#8FA397"
+                               HorizontalTextAlignment="Center"
+                               Margin="0,0,0,8" />
 
-            <Label Text="Пароль" TextColor="#A7B8AD" />
-            <Entry x:Name="PasswordEntry"
-                   IsPassword="True"
-                   Placeholder="пароль"
-                   PlaceholderColor="#6B7F74"
-                   TextColor="#F3F7F3"
-                   BackgroundColor="#1B3328"
-                   HeightRequest="48" />
+                        <Border StrokeThickness="0"
+                                BackgroundColor="#1B3328"
+                                StrokeShape="RoundRectangle 12"
+                                Padding="12,0">
+                            <Entry x:Name="EmailEntry"
+                                   Keyboard="Email"
+                                   Placeholder="Email"
+                                   PlaceholderColor="#6B7F74"
+                                   TextColor="#F3F7F3"
+                                   BackgroundColor="Transparent"
+                                   HeightRequest="48" />
+                        </Border>
 
-            <VerticalStackLayout x:Name="NameBlock" IsVisible="False" Spacing="10">
-                <Label Text="Имя" TextColor="#A7B8AD" />
-                <Entry x:Name="NameEntry"
-                       Placeholder="как к вам обращаться"
-                       PlaceholderColor="#6B7F74"
-                       TextColor="#F3F7F3"
-                       BackgroundColor="#1B3328"
-                       HeightRequest="48" />
-            </VerticalStackLayout>
+                        <Border StrokeThickness="0"
+                                BackgroundColor="#1B3328"
+                                StrokeShape="RoundRectangle 12"
+                                Padding="12,0,4,0">
+                            <Grid ColumnDefinitions="*,Auto">
+                                <Entry x:Name="PasswordEntry"
+                                       IsPassword="True"
+                                       Placeholder="Пароль"
+                                       PlaceholderColor="#6B7F74"
+                                       TextColor="#F3F7F3"
+                                       BackgroundColor="Transparent"
+                                       HeightRequest="48" />
+                                <Button x:Name="PasswordEye"
+                                        Grid.Column="1"
+                                        Text="показать"
+                                        Clicked="OnTogglePassword"
+                                        BackgroundColor="Transparent"
+                                        TextColor="#A7B8AD"
+                                        FontSize="12"
+                                        Padding="8,0"
+                                        HeightRequest="48"
+                                        VerticalOptions="Center" />
+                            </Grid>
+                        </Border>
 
-            <VerticalStackLayout x:Name="StaffRoleBlock" IsVisible="False" Spacing="8" Margin="0,4,0,4">
-                <Label Text="Кто вы" TextColor="#A7B8AD" />
-                <Button x:Name="DriverRoleButton" Text="Водитель — веду автолавку" Clicked="OnPickDriver" BackgroundColor="#1B3328" TextColor="#F3F7F3" HeightRequest="48" />
-                <Button x:Name="SellerRoleButton" Text="Продавец — торгую в салоне" Clicked="OnPickSeller" BackgroundColor="#1B3328" TextColor="#F3F7F3" HeightRequest="48" />
-                <Button x:Name="DispatcherRoleButton" Text="Диспетчер — сижу в офисе" Clicked="OnPickDispatcher" BackgroundColor="#1B3328" TextColor="#F3F7F3" HeightRequest="48" />
-            </VerticalStackLayout>
-            <Button Text="Войти"
-                    Clicked="OnLogin"
-                    BackgroundColor="#3DBA7A"
-                    TextColor="#082014"
-                    HeightRequest="48"
-                    Margin="0,8,0,0" />
-            <Button x:Name="RegisterButton"
-                    Text="Зарегистрироваться"
-                    Clicked="OnRegister"
-                    IsVisible="False"
-                    BackgroundColor="#1B3328"
-                    TextColor="#F3F7F3"
-                    HeightRequest="48" />
+                        <VerticalStackLayout x:Name="RegisterExtras" IsVisible="False" Spacing="12">
+                            <Border StrokeThickness="0"
+                                    BackgroundColor="#1B3328"
+                                    StrokeShape="RoundRectangle 12"
+                                    Padding="12,0">
+                                <Entry x:Name="NameEntry"
+                                       Placeholder="Имя"
+                                       PlaceholderColor="#6B7F74"
+                                       TextColor="#F3F7F3"
+                                       BackgroundColor="Transparent"
+                                       HeightRequest="48" />
+                            </Border>
 
-            <Label x:Name="ErrorLabel" TextColor="#F0C7B0" />
-        </VerticalStackLayout>
-    </ScrollView>
+                            <FlexLayout x:Name="StaffRoleBlock"
+                                        IsVisible="False"
+                                        Wrap="Wrap"
+                                        JustifyContent="Center"
+                                        AlignItems="Center">
+                                <Button x:Name="DriverRoleButton"
+                                        Text="Водитель"
+                                        Clicked="OnPickDriver"
+                                        BackgroundColor="#1B3328"
+                                        TextColor="#F3F7F3"
+                                        HeightRequest="40"
+                                        Margin="0,0,8,8"
+                                        Padding="14,0" />
+                                <Button x:Name="SellerRoleButton"
+                                        Text="Продавец"
+                                        Clicked="OnPickSeller"
+                                        BackgroundColor="#1B3328"
+                                        TextColor="#F3F7F3"
+                                        HeightRequest="40"
+                                        Margin="0,0,8,8"
+                                        Padding="14,0" />
+                                <Button x:Name="DispatcherRoleButton"
+                                        Text="Диспетчер"
+                                        Clicked="OnPickDispatcher"
+                                        BackgroundColor="#1B3328"
+                                        TextColor="#F3F7F3"
+                                        HeightRequest="40"
+                                        Margin="0,0,0,8"
+                                        Padding="14,0" />
+                            </FlexLayout>
+                        </VerticalStackLayout>
+
+                        <Button x:Name="PrimaryButton"
+                                Text="Войти"
+                                Clicked="OnPrimary"
+                                BackgroundColor="#3DBA7A"
+                                TextColor="#082014"
+                                HeightRequest="50"
+                                CornerRadius="14"
+                                Margin="0,6,0,0" />
+
+                        <Button x:Name="ModeButton"
+                                Text="Нужна заявка"
+                                Clicked="OnToggleMode"
+                                BackgroundColor="Transparent"
+                                TextColor="#C5D4CB"
+                                HeightRequest="40"
+                                BorderWidth="0" />
+
+                        <Label x:Name="ErrorLabel"
+                               TextColor="#F0C7B0"
+                               HorizontalTextAlignment="Center" />
+                    </VerticalStackLayout>
+                </Border>
+            </Grid>
+        </ScrollView>
+    </Grid>
 </ContentPage>

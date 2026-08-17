@@ -39,6 +39,21 @@ public partial class ResidentStopPage : ContentPage
         WindowLabel.Text = GeoMath.InReportWindow(_stop.PlannedArrivalUtc, DateTimeOffset.Now)
             ? "Сейчас окно отметки: можно сказать «на месте» / «не приехала»."
             : "Окно отметки закрыто (за 15 мин до плана и час после).";
+        var route = _snapshot.Current.Routes.FirstOrDefault(r => r.Id == _stop.RouteId);
+        var note = route is null
+            ? null
+            : _snapshot.ActiveNotes().FirstOrDefault(n => n.VehicleId == route.VehicleId);
+        if (note is null)
+        {
+            DriverNoteLabel.IsVisible = false;
+            DriverNoteLabel.Text = "";
+        }
+        else
+        {
+            DriverNoteLabel.IsVisible = true;
+            DriverNoteLabel.Text = $"Водитель: {note.Body} · {note.CreatedAtUtc.ToLocalTime():HH:mm}";
+        }
+
         FavoriteButton.Text = FavoriteStore.Contains(_stop.Id) ? "Убрать из избранного" : "В избранное";
     }
 

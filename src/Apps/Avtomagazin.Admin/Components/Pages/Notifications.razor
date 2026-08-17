@@ -30,6 +30,7 @@ else
             <span class="fav-legend-label">0</span>
             <div class="fav-legend-bar" title="Подписчиков: от 0 до 100+"></div>
             <span class="fav-legend-label">100+</span>
+            <span class="block-meta fav-map-count">@_points.Count остановок</span>
         </div>
     </div>
 
@@ -72,16 +73,8 @@ else
     private List<object> _points = [];
     private IJSObjectReference? _map;
 
-    private bool _bootstrapped;
-
-    protected override async Task OnAfterRenderAsync(bool firstRender)
+    protected override async Task OnInitializedAsync()
     {
-        if (!firstRender || _bootstrapped)
-        {
-            return;
-        }
-
-        _bootstrapped = true;
         if (!await Session.EnsureAuthenticatedAsync())
         {
             Nav.NavigateTo("/");
@@ -90,7 +83,7 @@ else
 
         try
         {
-            var routesTask = Api.GetRoutesAsync();
+            var routesTask = Api.GetRoutesAsync(catalog: true);
             var statsTask = Api.GetFavoriteStatsAsync();
             await Task.WhenAll(routesTask, statsTask);
             var routes = await routesTask;
@@ -101,11 +94,13 @@ else
                 .GroupBy(s => s.SettlementName, StringComparer.OrdinalIgnoreCase)
                 .ToDictionary(g => g.Key, g => g.Max(x => x.SubscriberCount), StringComparer.OrdinalIgnoreCase);
 
-            var seen = new HashSet<Guid>();
+            // Prefer unique settlement+coords so heat + operational duplicates don't stack as one pin.
+            var seen = new HashSet<string>(StringComparer.Ordinal);
             _points = [];
             foreach (var stop in routes.SelectMany(r => r.Stops ?? []))
             {
-                if (!seen.Add(stop.Id))
+                var key = $"{stop.SettlementName}|{stop.Latitude:F4}|{stop.Longitude:F4}";
+                if (!seen.Add(key))
                 {
                     continue;
                 }
@@ -140,10 +135,11 @@ else
         {
             _loading = false;
         }
+    }
 
-        await InvokeAsync(StateHasChanged);
-
-        if (_mapReady || _loading)
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_loading || _mapReady)
         {
             return;
         }
@@ -151,7 +147,12 @@ else
         try
         {
             _map ??= await Js.InvokeAsync<IJSObjectReference>("import", "./js/map.js");
-            await _map.InvokeAsync<bool>("init", "favorites-map", 53.55, 26.4, 7);
+            var ok = await _map.InvokeAsync<bool>("init", "favorites-map", 53.55, 26.4, 7);
+            if (!ok)
+            {
+                return;
+            }
+
             if (_points.Count > 0)
             {
                 await _map.InvokeVoidAsync(

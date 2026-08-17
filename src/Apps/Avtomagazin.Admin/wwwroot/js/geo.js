@@ -14,7 +14,7 @@ export function startWatch(dotNetRef) {
             const speed = pos.coords.speed != null && !Number.isNaN(pos.coords.speed)
                 ? pos.coords.speed * 3.6
                 : null;
-            dotNetRef.invokeMethodAsync("OnGeo", pos.coords.latitude, pos.coords.longitude, speed);
+            dotNetRef.invokeMethodAsync("OnGeo", pos.coords.latitude, pos.coords.longitude, speed, pos.coords.accuracy ?? null);
         },
         (err) => {
             dotNetRef.invokeMethodAsync("OnGeoError", err.message || "Нет доступа к геолокации");
@@ -34,7 +34,7 @@ export function startDemo(dotNetRef, points) {
             return;
         }
         const p = points[i % points.length];
-        dotNetRef.invokeMethodAsync("OnGeo", p.lat, p.lng, 32);
+        dotNetRef.invokeMethodAsync("OnGeo", p.lat, p.lng, 32, 8);
         i += 1;
     };
     ping();

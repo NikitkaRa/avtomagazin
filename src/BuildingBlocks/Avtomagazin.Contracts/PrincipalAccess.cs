@@ -24,7 +24,7 @@ public static class PrincipalAccess
         => Guid.TryParse(user.FindFirst(AuthClaims.VehicleId)?.Value, out var id) ? id : null;
 
     public static int TokenVersion(this ClaimsPrincipal user)
-        => int.TryParse(user.FindFirst(AuthClaims.TokenVersion)?.Value, out var v) ? v : 0;
+        => int.TryParse(user.FindFirst(AuthClaims.TokenVersion)?.Value, out var v) ? v : 1;
 
     public static bool CanDispatch(this ClaimsPrincipal user)
         => user.Role() is Roles.Operator or Roles.Admin;

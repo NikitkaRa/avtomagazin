@@ -20,7 +20,10 @@ export function init(id, lat, lon, zoom) {
     const map = L.map(el, { zoomControl: true, attributionControl: false });
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
         maxZoom: 18,
-        attribution: ""
+        attribution: "",
+        // Prefer browser HTTP cache; longer TTL for revisit of the same area.
+        crossOrigin: true,
+        updateWhenIdle: true
     }).addTo(map);
     map.setView([lat, lon], zoom);
     el._avtoMap = map;
@@ -137,11 +140,18 @@ export function setFavoriteHeat(id, items, options) {
     }
 
     if (fit && bounds.length > 0) {
-        if (bounds.length === 1) {
-            el._avtoMap.setView(bounds[0], 12);
-        } else {
+        const applyFit = () => {
+            el._avtoMap.invalidateSize();
+            if (bounds.length === 1) {
+                el._avtoMap.setView(bounds[0], 12);
+                return;
+            }
+
             el._avtoMap.fitBounds(bounds, { padding: [36, 36], maxZoom: 12 });
-        }
+        };
+        applyFit();
+        setTimeout(applyFit, 80);
+        setTimeout(applyFit, 280);
     }
 }
 

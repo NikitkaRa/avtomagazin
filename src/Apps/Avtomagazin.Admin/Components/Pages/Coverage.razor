@@ -87,7 +87,7 @@
         try
         {
             _vehicles = await Api.GetVehiclesAsync();
-            var routes = await Api.GetRoutesAsync();
+            var routes = await Api.GetRoutesAsync(catalog: true);
             _stops = routes.SelectMany(r => r.Stops).ToList();
             _coverage = await Api.GetCoverageAsync();
         }

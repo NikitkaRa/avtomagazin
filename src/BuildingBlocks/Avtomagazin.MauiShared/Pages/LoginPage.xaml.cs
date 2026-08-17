@@ -7,6 +7,8 @@ public partial class LoginPage : ContentPage
     private readonly SnapshotStore _snapshot;
     private readonly AppFlavor _flavor;
     private string _staffRole = "driver";
+    private bool _registerMode;
+    private bool _showPassword;
 
     public LoginPage(Session session, ApiHub api, SnapshotStore snapshot, AppFlavor flavor)
     {
@@ -15,28 +17,18 @@ public partial class LoginPage : ContentPage
         _api = api;
         _snapshot = snapshot;
         _flavor = flavor;
-        TitleLabel.Text = flavor.Title;
-        SubtitleLabel.Text = flavor.Subtitle;
-        RegisterButton.IsVisible = flavor.AllowRegister;
-        NameBlock.IsVisible = flavor.AllowRegister;
+        TitleLabel.Text = string.IsNullOrWhiteSpace(flavor.Subtitle) ? "Вход" : flavor.Subtitle;
+        ModeButton.IsVisible = flavor.AllowRegister;
         StaffRoleBlock.IsVisible = flavor.Client == "staff";
-        EnvLabel.Text = MauiGateway.EnvironmentName == "Development"
-            ? "Разработка · локальный API"
-            : MauiGateway.EnvironmentName;
-        HighlightStaffRole();
+        BgImage.Source = ImageSource.FromFile("login_bg.png");
+        ApplyMode();
     }
 
-    protected override async void OnAppearing()
+    private void OnTogglePassword(object? sender, EventArgs e)
     {
-        base.OnAppearing();
-        if (_session.IsAuthenticated && RoleAllowed(_session.Role))
-        {
-            await EnterAsync();
-        }
-        else if (_session.IsAuthenticated)
-        {
-            _session.SignOut();
-        }
+        _showPassword = !_showPassword;
+        PasswordEntry.IsPassword = !_showPassword;
+        PasswordEye.Text = _showPassword ? "скрыть" : "показать";
     }
 
     private void OnPickDriver(object? sender, EventArgs e)
@@ -70,11 +62,25 @@ public partial class LoginPage : ContentPage
         button.TextColor = Color.FromArgb(on ? "#082014" : "#F3F7F3");
     }
 
-    private async void OnLogin(object? sender, EventArgs e)
-        => await SubmitAsync(register: false);
+    private void OnToggleMode(object? sender, EventArgs e)
+    {
+        _registerMode = !_registerMode;
+        ApplyMode();
+    }
 
-    private async void OnRegister(object? sender, EventArgs e)
-        => await SubmitAsync(register: true);
+    private void ApplyMode()
+    {
+        RegisterExtras.IsVisible = _registerMode && _flavor.AllowRegister;
+        PrimaryButton.Text = _registerMode ? "Отправить заявку" : "Войти";
+        ModeButton.Text = _registerMode ? "Уже есть аккаунт" : "Нужна заявка";
+        if (_registerMode)
+        {
+            HighlightStaffRole();
+        }
+    }
+
+    private async void OnPrimary(object? sender, EventArgs e)
+        => await SubmitAsync(register: _registerMode);
 
     private async Task SubmitAsync(bool register)
     {
@@ -89,22 +95,24 @@ public partial class LoginPage : ContentPage
                 : await _api.Client.LoginAsync(email, password);
             if (login is null)
             {
-                ErrorLabel.Text = "Не удалось войти. Проверьте email, пароль и что API запущен.";
+                ErrorLabel.Text = "Не удалось войти. Проверьте email и пароль.";
                 return;
             }
 
             if (string.Equals(login.Status, "pending", StringComparison.OrdinalIgnoreCase)
                 || string.IsNullOrWhiteSpace(login.AccessToken))
             {
-                ErrorLabel.Text = "Заявку отправили. Админ подтвердит вход в админке.";
+                ErrorLabel.Text = "Заявка отправлена. Ждите подтверждения админа.";
+                _registerMode = false;
+                ApplyMode();
                 return;
             }
 
             if (!_flavor.AllowedRoles.Contains(login.Role))
             {
                 ErrorLabel.Text = client == "resident"
-                    ? "Этот аккаунт для персонала. Откройте приложение персонала."
-                    : "Этот аккаунт для жителей. Откройте приложение жителя.";
+                    ? "Это аккаунт персонала — откройте приложение персонала."
+                    : "Это аккаунт жителя — откройте приложение жителя.";
                 return;
             }
 
@@ -113,43 +121,30 @@ public partial class LoginPage : ContentPage
         }
         catch (Exception ex)
         {
-            ErrorLabel.Text = ex.Message;
+            ErrorLabel.Text = FriendlyLoginError(ex);
         }
+    }
+
+    private static string FriendlyLoginError(Exception ex)
+    {
+        var msg = ex.Message;
+        if (msg.Contains("502", StringComparison.Ordinal)
+            || msg.Contains("Bad Gateway", StringComparison.OrdinalIgnoreCase)
+            || msg.Contains("Connection", StringComparison.OrdinalIgnoreCase)
+            || msg.Contains("refused", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Нет связи с сервером. Проверьте, что API запущен.";
+        }
+
+        return msg.Length > 140 ? msg[..140] + "…" : msg;
     }
 
     private async Task AfterSignInAsync()
     {
-        try
-        {
-            await _api.Client.RegisterDeviceAsync(new(
-                _session.UserId,
-                _session.DeviceToken,
-                _session.Platform,
-                "Озеричино"));
-            if (_session.IsResident)
-            {
-                await FavoriteStore.PullAsync(_api.Client);
-            }
-        }
-        catch
-        {
-            // вход всё равно открываем
-        }
-
-        await EnterAsync();
-    }
-
-    private async Task EnterAsync()
-    {
-        await _snapshot.LoadBootstrapAsync();
-        _snapshot.LoadCache();
-        _ = _snapshot.RefreshAsync(_api.Client);
+        await SessionGate.BootstrapAsync(_session, _api, _snapshot);
         if (Shell.Current is IAppHost host)
         {
             host.ShowSignedIn();
         }
     }
-
-    private bool RoleAllowed(string? role)
-        => !string.IsNullOrWhiteSpace(role) && _flavor.AllowedRoles.Contains(role);
 }

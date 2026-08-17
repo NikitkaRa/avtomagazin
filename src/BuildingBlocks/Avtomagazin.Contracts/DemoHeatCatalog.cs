@@ -5,7 +5,8 @@ public static class DemoHeatCatalog
 {
     public const int ResidentCount = 1000;
     public static readonly Guid HeatRouteId = Guid.Parse("f1000000-0000-4000-8000-000000000001");
-    public static readonly Guid HeatVehicleId = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+    /// <summary>Synthetic van for the favorites heat map — not a real crew vehicle.</summary>
+    public static readonly Guid HeatVehicleId = Guid.Parse("f1000000-0000-4000-8000-0000000000aa");
 
     public static Guid ResidentId(int index) => Guid.Parse($"b1000000-0000-4000-8000-{index:D12}");
     public static Guid DeviceId(int index) => Guid.Parse($"d1000000-0000-4000-8000-{index:D12}");

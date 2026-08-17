@@ -12,7 +12,6 @@ public partial class AppShell : Shell, IAppHost
         InitializeComponent();
         _services = services;
         Routing.RegisterRoute("stop", typeof(ResidentStopPage));
-        ShowLogin();
     }
 
     public void ShowSignedIn()
@@ -30,7 +29,7 @@ public partial class AppShell : Shell, IAppHost
         ShowLogin();
     }
 
-    private void ShowLogin()
+    public void ShowLogin()
     {
         Items.Clear();
         Items.Add(new ShellContent

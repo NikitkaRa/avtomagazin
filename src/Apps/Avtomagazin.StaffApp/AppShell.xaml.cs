@@ -11,7 +11,6 @@ public partial class AppShell : Shell, IAppHost
     {
         InitializeComponent();
         _services = services;
-        ShowLogin();
     }
 
     public void ShowSignedIn()
@@ -20,10 +19,17 @@ public partial class AppShell : Shell, IAppHost
         Items.Clear();
         if (session.IsVanCrew)
         {
-            Items.Add(ShellTabs.Create(("Рейс", _services.GetRequiredService<DrivePage>())));
+            FlyoutBehavior = FlyoutBehavior.Disabled;
+            Shell.SetNavBarIsVisible(this, false);
+            // Single content — no Shell tab/title chrome; DrivePage owns bottom bar.
+            Items.Add(new ShellContent
+            {
+                Content = _services.GetRequiredService<DrivePage>()
+            });
             return;
         }
 
+        Shell.SetNavBarIsVisible(this, true);
         Items.Add(ShellTabs.Create(
             ("Карта", _services.GetRequiredService<DispatchPage>()),
             ("Визиты", _services.GetRequiredService<CoveragePage>())));
@@ -35,7 +41,7 @@ public partial class AppShell : Shell, IAppHost
         ShowLogin();
     }
 
-    private void ShowLogin()
+    public void ShowLogin()
     {
         Items.Clear();
         Items.Add(new ShellContent

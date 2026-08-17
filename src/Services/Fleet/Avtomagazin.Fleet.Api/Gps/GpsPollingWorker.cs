@@ -1,4 +1,3 @@
-using Avtomagazin.Contracts.Events;
 using Avtomagazin.Fleet.Api.Data;
 using Avtomagazin.Fleet.Api.Gps;
 using MassTransit;
@@ -28,53 +27,7 @@ public sealed class GpsPollingWorker(
                     var db = scope.ServiceProvider.GetRequiredService<FleetDbContext>();
                     var bus = scope.ServiceProvider.GetRequiredService<IPublishEndpoint>();
 
-                    var ids = fixes.Select(f => f.VehicleId).Distinct().ToList();
-                    var vehicles = await db.Vehicles
-                        .Where(v => ids.Contains(v.Id))
-                        .ToDictionaryAsync(v => v.Id, stoppingToken);
-
-                    foreach (var fix in fixes)
-                    {
-                        if (!vehicles.TryGetValue(fix.VehicleId, out var vehicle))
-                        {
-                            continue;
-                        }
-
-                        // Live broadcast from driver/seller app wins over mock telematics.
-                        var live = string.Equals(vehicle.LastSource, "driver-app", StringComparison.OrdinalIgnoreCase)
-                                   && vehicle.LastSeenAtUtc > DateTimeOffset.UtcNow.AddSeconds(-90);
-                        if (live)
-                        {
-                            continue;
-                        }
-
-                        var position = new VehiclePosition
-                        {
-                            Id = Guid.NewGuid(),
-                            VehicleId = fix.VehicleId,
-                            Latitude = fix.Latitude,
-                            Longitude = fix.Longitude,
-                            SpeedKmh = fix.SpeedKmh,
-                            RecordedAtUtc = fix.RecordedAtUtc,
-                            Source = "gps-adapter"
-                        };
-
-                        vehicle.LastLatitude = fix.Latitude;
-                        vehicle.LastLongitude = fix.Longitude;
-                        vehicle.LastSeenAtUtc = fix.RecordedAtUtc;
-                        vehicle.LastSource = "gps-adapter";
-                        db.Positions.Add(position);
-
-                        await bus.Publish(new VehiclePositionUpdated(
-                            vehicle.Id,
-                            vehicle.PlateNumber,
-                            fix.Latitude,
-                            fix.Longitude,
-                            fix.SpeedKmh,
-                            fix.RecordedAtUtc), stoppingToken);
-                    }
-
-                    await db.SaveChangesAsync(stoppingToken);
+                    await GpsFixApplier.ApplyAsync(db, bus, fixes, stoppingToken);
 
                     if (++_cycles % 20 == 0 && db.Database.IsRelational())
                     {

@@ -94,6 +94,30 @@ public static class Seed
             "Мария Савич",
             "+375297770022",
             "+375171600200");
+        await UpsertVehicleAsync(
+            db,
+            Guid.Parse("f2000000-0000-4000-8000-000000000001"),
+            "9012 EF-5",
+            "Пуховичское райпо",
+            53.6238,
+            27.8874,
+            "Павел Крук",
+            "+375297770031",
+            "Ольга Лиса",
+            "+375297770032",
+            "+375171600200");
+        await UpsertVehicleAsync(
+            db,
+            Guid.Parse("f2000000-0000-4000-8000-000000000002"),
+            "3456 GH-1",
+            "Пуховичское райпо",
+            53.4372,
+            28.0015,
+            "Андрей Жук",
+            "+375297770041",
+            "Ирина Бонд",
+            "+375297770042",
+            "+375171600200");
         await db.SaveChangesAsync();
     }
 
@@ -125,7 +149,8 @@ public static class Seed
                 OperatorPhone = operatorPhone,
                 LastLatitude = lat,
                 LastLongitude = lng,
-                LastSeenAtUtc = DateTimeOffset.UtcNow
+                LastSeenAtUtc = DateTimeOffset.UtcNow,
+                LastSource = "driver-app"
             });
             return;
         }
@@ -137,7 +162,10 @@ public static class Seed
         vehicle.SellerName = sellerName;
         vehicle.SellerPhone = sellerPhone;
         vehicle.OperatorPhone = operatorPhone;
-        vehicle.LastLatitude ??= lat;
-        vehicle.LastLongitude ??= lng;
+        // Keep demo vans near their route so ETA is not absurd after emulator GPS noise.
+        vehicle.LastLatitude = lat;
+        vehicle.LastLongitude = lng;
+        vehicle.LastSeenAtUtc = DateTimeOffset.UtcNow;
+        vehicle.LastSource = "driver-app";
     }
 }

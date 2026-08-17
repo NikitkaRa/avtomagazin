@@ -49,15 +49,15 @@ public sealed class AppFlavor
     public static AppFlavor Resident { get; } = new()
     {
         Title = "Автомагазин",
-        Subtitle = "Войдите, чтобы видеть рейс и подписываться на остановку.",
+        Subtitle = "",
         AllowRegister = true,
         AllowedRoles = new HashSet<string>(StringComparer.Ordinal) { "resident" }
     };
 
     public static AppFlavor Staff { get; } = new()
     {
-        Title = "Автомагазин · персонал",
-        Subtitle = "Водитель и продавец — в автолавке. Диспетчер — в офисе. Админ подтверждает заявки.",
+        Title = "Автомагазин",
+        Subtitle = "",
         AllowRegister = true,
         AllowedRoles = new HashSet<string>(StringComparer.Ordinal) { "driver", "seller", "operator", "admin" }
     };
@@ -66,5 +66,6 @@ public sealed class AppFlavor
 public interface IAppHost
 {
     void ShowSignedIn();
+    void ShowLogin();
     void SignOut();
 }

@@ -45,6 +45,13 @@ public class PrincipalAccessTests
         Assert.False(Principal(Roles.Resident, null).CanWriteVehicle(van));
     }
 
+    [Fact]
+    public void Missing_token_version_defaults_to_one()
+    {
+        var principal = Principal(Roles.Driver, Guid.NewGuid());
+        Assert.Equal(1, principal.TokenVersion());
+    }
+
     private static ClaimsPrincipal Principal(string role, Guid? vehicleId)
     {
         var claims = new List<Claim>

@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using Avtomagazin.Contracts;
 using Avtomagazin.Contracts.Events;
+using Avtomagazin.Routing.Api;
 using Avtomagazin.Routing.Api.Consumers;
 using Avtomagazin.Routing.Api.Data;
 using Avtomagazin.Routing.Api.Gov;
@@ -85,15 +86,28 @@ using (var scope = app.Services.CreateScope())
             """);
         await db.Database.ExecuteSqlRawAsync(
             """ALTER TABLE "Stops" ADD COLUMN IF NOT EXISTS "PhotoDataUrl" text""");
+        await db.Database.ExecuteSqlRawAsync(
+            """ALTER TABLE "EtaSnapshots" ADD COLUMN IF NOT EXISTS "DistanceKm" double precision""");
+        await db.Database.ExecuteSqlRawAsync(
+            """ALTER TABLE "CoverageVisits" ADD COLUMN IF NOT EXISTS "Skipped" boolean NOT NULL DEFAULT false""");
+        await db.Database.ExecuteSqlRawAsync(
+            """
+            CREATE TABLE IF NOT EXISTS "DriverNotes" (
+                "Id" uuid NOT NULL PRIMARY KEY,
+                "VehicleId" uuid NOT NULL,
+                "Body" character varying(500) NOT NULL,
+                "Latitude" double precision NOT NULL,
+                "Longitude" double precision NOT NULL,
+                "CreatedAtUtc" timestamp with time zone NOT NULL
+            );
+            CREATE UNIQUE INDEX IF NOT EXISTS "IX_DriverNotes_VehicleId" ON "DriverNotes" ("VehicleId");
+            """);
     }
     await Seed.EnsureSeedAsync(db);
 }
 
-app.MapGet("/api/routes", async (RoutingDbContext db) =>
-    await db.Routes.AsNoTracking()
-        .Include(r => r.Stops.OrderBy(s => s.Sequence))
-        .OrderBy(r => r.Name)
-        .ToListAsync())
+app.MapGet("/api/routes", async (bool? catalog, RoutingDbContext db, CancellationToken ct) =>
+        Results.Ok(await RouteList.BuildAsync(db, catalog == true, ct)))
     .WithName("ListRoutes")
     .WithTags("Routing");
 
@@ -136,6 +150,106 @@ app.MapGet("/api/eta", async (Guid? stopId, string? settlement, RoutingDbContext
     return Results.Ok(items);
 })
 .WithName("GetEta")
+.WithTags("Routing");
+
+app.MapGet("/api/driver-notes", async (RoutingDbContext db) =>
+{
+    var cutoff = DateTimeOffset.UtcNow.AddHours(-8);
+    var items = await db.DriverNotes.AsNoTracking()
+        .Where(n => n.CreatedAtUtc >= cutoff)
+        .OrderByDescending(n => n.CreatedAtUtc)
+        .ToListAsync();
+    return Results.Ok(items);
+})
+.WithName("ListDriverNotes")
+.WithTags("Routing");
+
+app.MapPost("/api/driver-notes", async (
+    PostDriverNoteRequest request,
+    ClaimsPrincipal principal,
+    RoutingDbContext db,
+    IPublishEndpoint bus) =>
+{
+    if (HttpAccess.ForbidVehicleWrite(principal, request.VehicleId) is { } denied)
+    {
+        return denied;
+    }
+
+    var body = (request.Body ?? "").Trim();
+    if (body.Length == 0)
+    {
+        return Results.BadRequest(new { error = "body is required" });
+    }
+
+    if (body.Length > 500)
+    {
+        body = body[..500];
+    }
+
+    var lat = request.Latitude;
+    var lng = request.Longitude;
+    if (lat is null || lng is null)
+    {
+        return Results.BadRequest(new { error = "latitude and longitude are required" });
+    }
+
+    var previous = await db.DriverNotes.Where(n => n.VehicleId == request.VehicleId).ToListAsync();
+    if (previous.Count > 0 && Roles.IsVanCrew(principal.Role() ?? ""))
+    {
+        return Results.Conflict(new { error = "Сначала снимите текущее сообщение" });
+    }
+
+    if (previous.Count > 0)
+    {
+        db.DriverNotes.RemoveRange(previous);
+    }
+
+    var note = new DriverStatusNote
+    {
+        Id = Guid.NewGuid(),
+        VehicleId = request.VehicleId,
+        Body = body,
+        Latitude = lat.Value,
+        Longitude = lng.Value,
+        CreatedAtUtc = DateTimeOffset.UtcNow
+    };
+    db.DriverNotes.Add(note);
+    await db.SaveChangesAsync();
+
+    await bus.Publish(new DriverStatusPosted(
+        note.VehicleId,
+        note.Body,
+        note.Latitude,
+        note.Longitude,
+        note.CreatedAtUtc));
+
+    return Results.Ok(note);
+})
+.RequireAuthorization(policy => policy.RequireRole(Roles.Driver, Roles.Seller, Roles.Operator, Roles.Admin))
+.WithName("PostDriverNote")
+.WithTags("Routing");
+
+app.MapDelete("/api/driver-notes/{vehicleId:guid}", async (
+    Guid vehicleId,
+    ClaimsPrincipal principal,
+    RoutingDbContext db) =>
+{
+    if (HttpAccess.ForbidVehicleWrite(principal, vehicleId) is { } denied)
+    {
+        return denied;
+    }
+
+    var existing = await db.DriverNotes.Where(n => n.VehicleId == vehicleId).ToListAsync();
+    if (existing.Count > 0)
+    {
+        db.DriverNotes.RemoveRange(existing);
+        await db.SaveChangesAsync();
+    }
+
+    return Results.NoContent();
+})
+.RequireAuthorization(policy => policy.RequireRole(Roles.Driver, Roles.Seller, Roles.Operator, Roles.Admin))
+.WithName("ClearDriverNote")
 .WithTags("Routing");
 
 app.MapPost("/api/routes", async (CreateRouteRequest request, RoutingDbContext db) =>
@@ -438,7 +552,8 @@ app.MapPost("/api/stops/{stopId:guid}/arrived", async (
     }
 
     var arrivedAt = DateTimeOffset.UtcNow;
-    var onTime = ReportWindow.Contains(stop.PlannedArrivalUtc, arrivedAt);
+    var skipped = request.Skipped;
+    var onTime = !skipped && ReportWindow.Contains(stop.PlannedArrivalUtc, arrivedAt);
     var visit = new CoverageVisit
     {
         Id = Guid.NewGuid(),
@@ -447,29 +562,33 @@ app.MapPost("/api/stops/{stopId:guid}/arrived", async (
         SettlementName = stop.SettlementName,
         RegionCode = stop.RegionCode,
         ArrivedAtUtc = arrivedAt,
-        WithinScheduledWindow = onTime
+        WithinScheduledWindow = onTime,
+        Skipped = skipped
     };
     db.CoverageVisits.Add(visit);
     await db.SaveChangesAsync();
 
-    var coverage = new CoverageVisitRecorded(
-        visit.VehicleId,
-        visit.StopId,
-        visit.SettlementName,
-        visit.RegionCode,
-        visit.ArrivedAtUtc,
-        visit.WithinScheduledWindow);
+    if (!skipped)
+    {
+        var coverage = new CoverageVisitRecorded(
+            visit.VehicleId,
+            visit.StopId,
+            visit.SettlementName,
+            visit.RegionCode,
+            visit.ArrivedAtUtc,
+            visit.WithinScheduledWindow);
 
-    await bus.Publish(coverage);
-    await bus.Publish(new DriverArrivedAtStop(
-        request.VehicleId,
-        stop.RouteId,
-        stop.Id,
-        stop.SettlementName,
-        arrivedAt));
-    await gov.PublishCoverageAsync(coverage);
+        await bus.Publish(coverage);
+        await bus.Publish(new DriverArrivedAtStop(
+            request.VehicleId,
+            stop.RouteId,
+            stop.Id,
+            stop.SettlementName,
+            arrivedAt));
+        await gov.PublishCoverageAsync(coverage);
+    }
 
-    return Results.Ok(new { visit.Id, stop.SettlementName, arrivedAt, withinScheduledWindow = onTime });
+    return Results.Ok(new { visit.Id, stop.SettlementName, arrivedAt, withinScheduledWindow = onTime, skipped });
 })
 .RequireAuthorization(policy => policy.RequireRole(Roles.Driver, Roles.Seller, Roles.Operator, Roles.Admin))
 .WithName("DriverArrivedAtStop")
@@ -745,7 +864,13 @@ public sealed record ChangeScheduleRequest(
     DateTimeOffset NewArrivalUtc,
     string Reason);
 
-public sealed record DriverArrivedRequest(Guid VehicleId);
+public sealed record DriverArrivedRequest(Guid VehicleId, bool Skipped = false);
+
+public sealed record PostDriverNoteRequest(
+    Guid VehicleId,
+    string Body,
+    double? Latitude,
+    double? Longitude);
 
 public sealed record PresenceReportRequest(string Kind, string? DeviceToken);
 public sealed record CaseCommentRequest(string Body);

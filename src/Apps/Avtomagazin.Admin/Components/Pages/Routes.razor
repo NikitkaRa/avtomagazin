@@ -90,7 +90,7 @@ else
         try
         {
             _vehicles = await Api.GetVehiclesAsync();
-            _routes = await Api.GetRoutesAsync();
+            _routes = await Api.GetRoutesAsync(catalog: true);
             _error = null;
         }
         catch (Exception ex)

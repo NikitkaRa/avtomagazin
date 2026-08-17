@@ -40,12 +40,44 @@ public partial class ResidentMapPage : ContentPage
     {
         await _snapshot.RefreshAsync(_api.Client);
         Banner.Text = _snapshot.Online
-            ? ""
+            ? DriverNoteBanner()
             : "Нет сети. Показано последнее расписание.";
-        Banner.IsVisible = !_snapshot.Online;
+        Banner.IsVisible = !string.IsNullOrWhiteSpace(Banner.Text);
+        Banner.TextColor = _snapshot.Online
+            ? Color.FromArgb("#F0C7B0")
+            : Color.FromArgb("#F0C7B0");
         RenderChips();
         RenderEta();
         FleetMap.Render(MapView, _snapshot.Current, tiles: _snapshot.Online);
+    }
+
+    private string DriverNoteBanner()
+    {
+        var note = _snapshot.ActiveNotes()
+            .OrderByDescending(n => n.CreatedAtUtc)
+            .FirstOrDefault(n =>
+            {
+                var van = _snapshot.Current.Vehicles.FirstOrDefault(v => v.Id == n.VehicleId);
+                if (van is null)
+                {
+                    return false;
+                }
+
+                return _snapshot.Current.Routes.Any(r =>
+                    r.VehicleId == n.VehicleId
+                    && (r.Stops ?? []).Any(s =>
+                        string.IsNullOrWhiteSpace(_settlement)
+                        || s.SettlementName.Contains(_settlement, StringComparison.OrdinalIgnoreCase)));
+            })
+            ?? _snapshot.ActiveNotes().OrderByDescending(n => n.CreatedAtUtc).FirstOrDefault();
+
+        if (note is null)
+        {
+            return "";
+        }
+
+        var plate = _snapshot.Current.Vehicles.FirstOrDefault(v => v.Id == note.VehicleId)?.PlateNumber ?? "автолавка";
+        return $"Водитель ({plate}): {note.Body} · {note.CreatedAtUtc.ToLocalTime():HH:mm}";
     }
 
     private void RenderChips()
@@ -74,6 +106,7 @@ public partial class ResidentMapPage : ContentPage
                 Preferences.Default.Set("settlement", captured);
                 RenderChips();
                 RenderEta();
+                _ = ReloadAsync();
             };
             Chips.Children.Add(chip);
         }
@@ -82,24 +115,39 @@ public partial class ResidentMapPage : ContentPage
     private void RenderEta()
     {
         EtaList.Children.Clear();
-        var items = _snapshot.Current.Eta
-            .Where(e => string.IsNullOrWhiteSpace(_settlement) || e.SettlementName == _settlement)
-            .OrderBy(e => e.MinutesUntilArrival)
+        var stops = _snapshot.AllStops()
+            .Where(s => string.IsNullOrWhiteSpace(_settlement)
+                        || s.SettlementName.Contains(_settlement, StringComparison.OrdinalIgnoreCase))
+            .Where(s => s.ArrivedAtUtc is null)
+            .OrderBy(s => s.PlannedArrivalUtc)
             .Take(3)
             .ToList();
-        if (items.Count == 0)
+
+        if (stops.Count == 0)
         {
             EtaList.Children.Add(new Label
             {
-                Text = $"По {_settlement} живого ETA пока нет — смотри план в «Рейс».",
+                Text = $"По {_settlement} на сегодня плана нет — смотри «Рейс».",
                 TextColor = Color.FromArgb("#A7B8AD")
             });
             return;
         }
 
-        foreach (var eta in items)
+        foreach (var stop in stops)
         {
-            EtaList.Children.Add(Card($"{eta.SettlementName} · ~{eta.MinutesUntilArrival} мин", "по GPS автолавки"));
+            var route = _snapshot.Current.Routes.FirstOrDefault(r => r.Id == stop.RouteId);
+            var note = route is null
+                ? null
+                : _snapshot.ActiveNotes().FirstOrDefault(n => n.VehicleId == route.VehicleId);
+            var plate = route is null
+                ? null
+                : _snapshot.Current.Vehicles.FirstOrDefault(v => v.Id == route.VehicleId)?.PlateNumber;
+            var sub = note is null
+                ? $"по расписанию{(plate is null ? "" : $" · {plate}")}"
+                : $"водитель: {note.Body}";
+            EtaList.Children.Add(Card(
+                $"{stop.SettlementName} · план {stop.PlannedArrivalUtc.ToLocalTime():HH:mm}",
+                sub));
         }
     }
 

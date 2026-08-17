@@ -1,5 +1,6 @@
 @inject AvtomagazinClient Api
 @inject StaffSession Session
+@inject UiToasts Toasts
 @inject IJSRuntime Js
 @using Microsoft.JSInterop
 @implements IAsyncDisposable
@@ -8,25 +9,29 @@
     <div class="page-head" style="padding-top:0">
         <div>
             <div class="brand">Мониторинг</div>
-            <div class="who">Жалобы и ход рейсов: где отстаём от графика.</div>
+            <div class="who">Жалобы, сообщения водителей и ход рейсов.</div>
         </div>
     </div>
 
     <div class="pulse">
-        <div class="pulse-item @(_cases.Count > 0 ? "pulse-warn" : null)">
-            <span class="pulse-n">@_cases.Sum(c => c.ReportCount)</span>
-            <span class="pulse-l">жалобы</span>
+        <div class="pulse-item @(_cases.Count > 0 || _notes.Count > 0 ? "pulse-warn" : null)">
+            <span class="pulse-n">@(_cases.Sum(c => c.ReportCount) + _notes.Count)</span>
+            <span class="pulse-l">внимание</span>
         </div>
-        <div class="pulse-item @(_delayedCount > 0 ? "pulse-warn" : null)">
-            <span class="pulse-n">@_delayedCount</span>
-            <span class="pulse-l">с отставанием</span>
+        <div class="pulse-item">
+            <span class="pulse-n">@_liveCount</span>
+            <span class="pulse-l">в эфире</span>
+        </div>
+        <div class="pulse-item">
+            <span class="pulse-n">@ActiveRoutes.Count()</span>
+            <span class="pulse-l">рейсы</span>
         </div>
     </div>
 
     <section class="block">
         <header class="block-head">
             <h2>Внимание</h2>
-            <span class="block-meta">@FilteredCases.Count()</span>
+            <span class="block-meta">@(FilteredNotes.Count() + FilteredCases.Count())</span>
         </header>
         <div class="attn-tools">
             <div class="filter-chips" role="tablist" aria-label="Статус">
@@ -38,17 +43,34 @@
             </div>
             <input class="attn-search" @bind="_settlementQuery" @bind:event="oninput" placeholder="Поиск по населённому пункту" />
         </div>
-        @if (!FilteredCases.Any())
+        @if (!FilteredNotes.Any() && !FilteredCases.Any())
         {
-            <p class="empty">@(string.IsNullOrWhiteSpace(_settlementQuery) ? "Нет кейсов по этому фильтру." : "Ничего не найдено.")</p>
+            <p class="empty">@(string.IsNullOrWhiteSpace(_settlementQuery) ? "Пока спокойно — жалоб и сообщений водителей нет." : "Ничего не найдено.")</p>
         }
         else
         {
             <ul class="feed">
+                @foreach (var note in FilteredNotes)
+                {
+                    var van = VanOf(note.VehicleId);
+                    var route = RouteOf(note.VehicleId);
+                    <li class="feed-row route-alert feed-action" @onclick="() => OpenTripAsync(note.VehicleId)">
+                        <div>
+                            <strong>@(route?.Name ?? van?.PlateNumber ?? "Автолавка")</strong>
+                            <span class="feed-sub">
+                                @(van?.PlateNumber ?? "автолавка") · водитель · @note.Body
+                            </span>
+                        </div>
+                        <div class="feed-side">
+                            <span class="route-alert-badge">водитель</span>
+                            <time>@Ago(note.CreatedAtUtc)</time>
+                        </div>
+                    </li>
+                }
                 @foreach (var item in FilteredCases)
                 {
                     var van = VanOf(item.VehicleId);
-                    <li class="feed-row @(item.Status == "closed" ? null : "warn") feed-action" @onclick="() => OpenCaseAsync(item.Id)">
+                    <li class="feed-row @(item.Status == "closed" ? null : "warn") feed-action" @onclick="() => OpenAttentionCaseAsync(item)">
                         <div>
                             <strong>@item.SettlementName</strong>
                             <span class="feed-sub">
@@ -83,7 +105,8 @@
             <ul class="feed">
                 @foreach (var row in ActiveRoutes)
                 {
-                    <li class="feed-row @(row.IsLate ? "route-late" : null)">
+                    <li class="feed-row feed-action @(row.HasDriverNote ? "route-alert" : row.IsLate ? "route-late" : null)"
+                        @onclick="() => OpenTripAsync(row.VehicleId)">
                         <div class="route-line">
                             @if (row.HasGps)
                             {
@@ -94,7 +117,11 @@
                                 <strong>@row.RouteName</strong>
                                 <span class="feed-sub">
                                     @row.Plate
-                                    @if (!string.IsNullOrEmpty(row.NextStop))
+                                    @if (!string.IsNullOrEmpty(row.DriverNote))
+                                    {
+                                        <text> · @row.DriverNote</text>
+                                    }
+                                    else if (!string.IsNullOrEmpty(row.NextStop))
                                     {
                                         <text> · след. @row.NextStop</text>
                                     }
@@ -102,7 +129,14 @@
                             </div>
                         </div>
                         <div class="feed-side">
-                            <span class="@(row.IsLate ? "route-late-badge" : null)">@row.DelayLabel</span>
+                            @if (row.HasDriverNote)
+                            {
+                                <span class="route-alert-badge">проблема</span>
+                            }
+                            else
+                            {
+                                <span class="@(row.IsLate ? "route-late-badge" : null)">@row.DelayLabel</span>
+                            }
                             @if (!string.IsNullOrEmpty(row.ScheduleLabel))
                             {
                                 <time>@row.ScheduleLabel</time>
@@ -114,6 +148,220 @@
         }
     </section>
 </div>
+
+@if (_tripVehicleId is Guid tripId)
+{
+    var tripVan = VanOf(tripId);
+    var tripRoute = RouteOf(tripId);
+    var tripNote = NoteOf(tripId);
+    var tripStops = (tripRoute?.Stops ?? []).OrderBy(s => s.Sequence).ToList();
+    var tripNext = tripStops.FirstOrDefault(s => s.ArrivedAtUtc is null);
+    var tripDone = tripStops.Count(s => s.ArrivedAtUtc is not null);
+    var tripOnSite = tripNext is not null && tripVan is not null && OnSite(tripVan, tripNext);
+    var tripHistory = TripHistory(tripId, tripStops, tripNote);
+    var tripCases = _cases.Where(c => c.VehicleId == tripId)
+        .OrderByDescending(c => c.Status != "closed")
+        .ThenByDescending(c => c.UpdatedAtUtc)
+        .ToList();
+    <div class="case-modal" @onclick="CloseTripAsync">
+        <div class="case-dialog" @onclick:stopPropagation="true" role="dialog" aria-modal="true">
+            <header class="case-sheet-head">
+                <div>
+                    <div class="eyebrow">Рейс</div>
+                    <h2>@(tripRoute?.Name ?? tripVan?.PlateNumber ?? "Автолавка")</h2>
+                    <p class="muted">
+                        @(tripVan?.PlateNumber ?? "нет номера")
+                        @if (tripVan is not null)
+                        {
+                            <text> · @tripVan.OperatorName</text>
+                        }
+                        @if (tripStops.Count > 0)
+                        {
+                            <text> · @tripDone / @tripStops.Count остановок</text>
+                        }
+                        @if (tripNote is not null)
+                        {
+                            <span class="route-alert-badge"> проблема</span>
+                        }
+                    </p>
+                </div>
+                <button type="button" class="btn btn-ghost" @onclick="CloseTripAsync">Закрыть</button>
+            </header>
+            <div class="case-dialog-scroll">
+                <section class="case-block">
+                    <h3>Сейчас</h3>
+                    @if (tripNote is not null)
+                    {
+                        <p class="trip-now-alert">@tripNote.Body · @Ago(tripNote.CreatedAtUtc)</p>
+                    }
+                    @if (tripNext is not null)
+                    {
+                        <p class="case-plate">
+                            @(tripOnSite ? "На точке" : "Следующая") · @tripNext.SettlementName
+                            · план @tripNext.PlannedArrivalUtc.ToLocalTime().ToString("HH:mm")
+                        </p>
+                    }
+                    else if (tripStops.Count > 0)
+                    {
+                        <p class="case-plate">Рейс завершён</p>
+                    }
+                    else
+                    {
+                        <p class="muted">Нет остановок на сегодня.</p>
+                    }
+                    <p class="tiny muted">
+                        @if (tripVan is null)
+                        {
+                            <text>Автолавка не найдена</text>
+                        }
+                        else if (IsLive(tripVan))
+                        {
+                            <text>GPS в эфире</text>
+                        }
+                        else if (tripVan.LastLatitude is not null)
+                        {
+                            <text>Последний GPS @(tripVan.LastSeenAtUtc is DateTimeOffset seen ? Ago(seen) : "")</text>
+                        }
+                        else
+                        {
+                            <text>Нет GPS</text>
+                        }
+                    </p>
+                </section>
+
+                <section class="case-block">
+                    <h3>Остановки</h3>
+                    @if (tripStops.Count == 0)
+                    {
+                        <p class="muted">Маршрут без точек.</p>
+                    }
+                    else
+                    {
+                        <ul class="trip-stops">
+                            @foreach (var stop in tripStops)
+                            {
+                                var done = stop.ArrivedAtUtc is not null;
+                                var isNext = !done && tripNext?.Id == stop.Id;
+                                var status = stop.Skipped
+                                    ? "пропущена"
+                                    : done
+                                        ? $"была {stop.ArrivedAtUtc!.Value.ToLocalTime():HH:mm}"
+                                        : isNext ? "сейчас" : "";
+                                <li class="trip-stop @(isNext ? "trip-stop-now" : done ? "trip-stop-done" : null)">
+                                    <div>
+                                        <strong>@stop.Sequence. @stop.SettlementName</strong>
+                                        @if (status.Length > 0)
+                                        {
+                                            <span class="feed-sub">@status</span>
+                                        }
+                                    </div>
+                                    <time>@stop.PlannedArrivalUtc.ToLocalTime().ToString("HH:mm")</time>
+                                </li>
+                            }
+                        </ul>
+                    }
+                </section>
+
+                <section class="case-block">
+                    <h3>Контакты</h3>
+                    @if (tripVan is not null)
+                    {
+                        <p class="case-plate">@tripVan.PlateNumber · @tripVan.OperatorName</p>
+                        <ul class="contact-list">
+                            @if (!string.IsNullOrWhiteSpace(tripVan.DriverPhone))
+                            {
+                                <li>
+                                    <span>Водитель @(tripVan.DriverName ?? "")</span>
+                                    <a href="tel:@Digits(tripVan.DriverPhone)">@tripVan.DriverPhone</a>
+                                </li>
+                            }
+                            @if (!string.IsNullOrWhiteSpace(tripVan.SellerPhone))
+                            {
+                                <li>
+                                    <span>Продавец @(tripVan.SellerName ?? "")</span>
+                                    <a href="tel:@Digits(tripVan.SellerPhone)">@tripVan.SellerPhone</a>
+                                </li>
+                            }
+                            @if (!string.IsNullOrWhiteSpace(tripVan.OperatorPhone))
+                            {
+                                <li>
+                                    <span>Райпо</span>
+                                    <a href="tel:@Digits(tripVan.OperatorPhone)">@tripVan.OperatorPhone</a>
+                                </li>
+                            }
+                            @if (string.IsNullOrWhiteSpace(tripVan.DriverPhone)
+                                 && string.IsNullOrWhiteSpace(tripVan.SellerPhone)
+                                 && string.IsNullOrWhiteSpace(tripVan.OperatorPhone))
+                            {
+                                <li class="muted">Контактов нет — добавьте во вкладке «Парк».</li>
+                            }
+                        </ul>
+                    }
+                    else
+                    {
+                        <p class="muted">Автолавка по маршруту не найдена.</p>
+                    }
+                </section>
+
+                @if (tripCases.Count > 0)
+                {
+                    <section class="case-block">
+                        <h3>Жалобы</h3>
+                        <ul class="feed trip-case-feed">
+                            @foreach (var item in tripCases)
+                            {
+                                <li class="feed-row @(item.Status == "closed" ? null : "warn") feed-action"
+                                    @onclick="() => OpenCaseAsync(item.Id)">
+                                    <div>
+                                        <strong>@item.SettlementName</strong>
+                                        <span class="feed-sub">@People(item.ReportCount) · @StatusLabel(item.Status)</span>
+                                    </div>
+                                    <time>@Ago(item.UpdatedAtUtc)</time>
+                                </li>
+                            }
+                        </ul>
+                    </section>
+                }
+
+                <section class="case-block">
+                    <h3>История</h3>
+                    @if (tripHistory.Count == 0)
+                    {
+                        <p class="muted">Пока пусто — нет отметок и сообщений.</p>
+                    }
+                    else
+                    {
+                        <ul class="timeline">
+                            @foreach (var ev in tripHistory)
+                            {
+                                @if (ev.CaseId is Guid caseId)
+                                {
+                                    <li class="feed-action" @onclick="() => OpenCaseAsync(caseId)">
+                                        <div class="timeline-top">
+                                            <strong>@ev.Kind</strong>
+                                            <time>@ev.At.ToLocalTime().ToString("dd.MM HH:mm")</time>
+                                        </div>
+                                        <p>@ev.Body</p>
+                                    </li>
+                                }
+                                else
+                                {
+                                    <li>
+                                        <div class="timeline-top">
+                                            <strong>@ev.Kind</strong>
+                                            <time>@ev.At.ToLocalTime().ToString("dd.MM HH:mm")</time>
+                                        </div>
+                                        <p>@ev.Body</p>
+                                    </li>
+                                }
+                            }
+                        </ul>
+                    }
+                </section>
+            </div>
+        </div>
+    </div>
+}
 
 @if (_detail is not null)
 {
@@ -237,8 +485,11 @@
 @code {
     private List<VehicleDto> _vans = [];
     private List<CaseSummaryDto> _cases = [];
-    private List<EtaDto> _etas = [];
     private List<RouteDto> _routes = [];
+    private List<DriverNoteDto> _notes = [];
+    private readonly HashSet<Guid> _seenNoteIds = [];
+    private bool _notesPrimed;
+    private Guid? _tripVehicleId;
     private CaseDetailDto? _detail;
     private string _comment = "";
     private string _statusFilter = "active";
@@ -247,7 +498,30 @@
     private bool _busy;
     private CancellationTokenSource? _poll;
 
-    private int _delayedCount => ActiveRoutes.Count(r => r.IsLate);
+    private int _liveCount => ActiveRoutes.Count(r => r.Live);
+
+    private IEnumerable<DriverNoteDto> FilteredNotes
+    {
+        get
+        {
+            IEnumerable<DriverNoteDto> items = _notes.OrderByDescending(n => n.CreatedAtUtc);
+            if (string.IsNullOrWhiteSpace(_settlementQuery))
+            {
+                return items;
+            }
+
+            var q = _settlementQuery.Trim();
+            return items.Where(n =>
+            {
+                var van = VanOf(n.VehicleId);
+                var route = RouteOf(n.VehicleId);
+                return n.Body.Contains(q, StringComparison.OrdinalIgnoreCase)
+                       || (van?.PlateNumber.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false)
+                       || (van?.OperatorName.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false)
+                       || (route?.Name.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false);
+            });
+        }
+    }
 
     private IEnumerable<CaseSummaryDto> FilteredCases
     {
@@ -273,20 +547,11 @@
     {
         get
         {
-            var etaByRoute = _etas
-                .GroupBy(e => e.RouteId)
-                .ToDictionary(g => g.Key, g => g.OrderBy(e => e.EstimatedArrivalUtc).First());
-
             var rows = new List<RouteProgress>();
             foreach (var route in _routes)
             {
                 var van = VanOf(route.VehicleId);
                 if (van is null || !van.IsActive)
-                {
-                    continue;
-                }
-
-                if (!IsLive(van) && van.LastLatitude is null && !etaByRoute.ContainsKey(route.Id))
                 {
                     continue;
                 }
@@ -297,61 +562,39 @@
                     continue;
                 }
 
-                etaByRoute.TryGetValue(route.Id, out var eta);
-                RouteStopDto? next = null;
-                if (eta is not null)
+                if (!IsLive(van) && van.LastLatitude is null && stops.All(s => s.ArrivedAtUtc is not null))
                 {
-                    next = stops.FirstOrDefault(s => s.Id == eta.StopId)
-                           ?? stops.FirstOrDefault(s =>
-                               s.SettlementName.Equals(eta.SettlementName, StringComparison.OrdinalIgnoreCase));
+                    continue;
                 }
 
-                next ??= stops
-                    .Where(s => s.PlannedArrivalUtc >= DateTimeOffset.UtcNow.AddMinutes(-30))
-                    .OrderBy(s => s.PlannedArrivalUtc)
-                    .FirstOrDefault()
-                    ?? stops.Last();
+                var next = stops.FirstOrDefault(s => s.ArrivedAtUtc is null)
+                           ?? stops
+                               .Where(s => s.PlannedArrivalUtc >= DateTimeOffset.UtcNow.AddMinutes(-30))
+                               .OrderBy(s => s.PlannedArrivalUtc)
+                               .FirstOrDefault()
+                           ?? stops.Last();
 
-                int? delay = null;
-                string delayLabel;
-                string scheduleLabel;
-                if (eta is not null && next is not null)
-                {
-                    delay = (int)Math.Round((eta.EstimatedArrivalUtc - next.PlannedArrivalUtc).TotalMinutes);
-                    delayLabel = delay switch
-                    {
-                        > 2 => $"+{delay} мин",
-                        < -2 => $"{delay} мин",
-                        _ => "по графику"
-                    };
-                    scheduleLabel =
-                        $"план {next.PlannedArrivalUtc.ToLocalTime():HH:mm} · ETA {eta.EstimatedArrivalUtc.ToLocalTime():HH:mm}";
-                }
-                else if (next is not null)
-                {
-                    delayLabel = IsLive(van) ? "ждём ETA" : "нет ETA";
-                    scheduleLabel = $"план {next.PlannedArrivalUtc.ToLocalTime():HH:mm}";
-                }
-                else
-                {
-                    delayLabel = "—";
-                    scheduleLabel = "";
-                }
+                var scheduleLabel = next is null
+                    ? ""
+                    : $"план {next.PlannedArrivalUtc.ToLocalTime():HH:mm}";
+                var delayLabel = IsLive(van) ? "в эфире" : "нет GPS";
+                var note = NoteOf(van.Id);
 
                 rows.Add(new RouteProgress(
+                    van.Id,
                     route.Name,
                     van.PlateNumber,
                     next?.SettlementName ?? "",
-                    delay,
+                    null,
                     delayLabel,
                     scheduleLabel,
                     IsLive(van),
-                    van.LastLatitude is not null));
+                    van.LastLatitude is not null,
+                    note?.Body));
             }
 
             return rows
-                .OrderByDescending(r => r.IsLate)
-                .ThenByDescending(r => r.DelayMinutes ?? int.MinValue)
+                .OrderByDescending(r => r.HasDriverNote)
                 .ThenByDescending(r => r.Live)
                 .ThenByDescending(r => r.HasGps)
                 .ThenBy(r => r.RouteName);
@@ -396,8 +639,8 @@
             var snap = await Api.GetDispatchSnapshotAsync(status);
             _vans = snap.Vehicles;
             _cases = snap.Cases;
-            _etas = snap.Eta;
             _routes = snap.Routes;
+            await ApplyNotesAsync(snap.DriverNotes);
         }
         catch
         {
@@ -408,6 +651,50 @@
             catch
             {
             }
+
+            try
+            {
+                await ApplyNotesAsync(await Api.GetDriverNotesAsync());
+            }
+            catch
+            {
+            }
+        }
+    }
+
+    private async Task ApplyNotesAsync(List<DriverNoteDto> notes)
+    {
+        var incoming = notes ?? [];
+        if (_notesPrimed)
+        {
+            foreach (var note in incoming.Where(n => !_seenNoteIds.Contains(n.Id)))
+            {
+                var plate = VanOf(note.VehicleId)?.PlateNumber ?? "автолавка";
+                var route = RouteOf(note.VehicleId)?.Name;
+                var where = string.IsNullOrWhiteSpace(route) ? plate : $"{route} · {plate}";
+                Toasts.Error($"Проблема на маршруте · {where}: {note.Body}");
+                await PlaySoftAlertAsync();
+            }
+        }
+
+        _notes = incoming;
+        _seenNoteIds.Clear();
+        foreach (var id in incoming.Select(n => n.Id))
+        {
+            _seenNoteIds.Add(id);
+        }
+
+        _notesPrimed = true;
+    }
+
+    private async Task PlaySoftAlertAsync()
+    {
+        try
+        {
+            await Js.InvokeVoidAsync("avtomagazinNotify.softAlert");
+        }
+        catch
+        {
         }
     }
 
@@ -422,8 +709,31 @@
         await ReloadAsync();
     }
 
+    private Task OpenAttentionCaseAsync(CaseSummaryDto item)
+        => item.VehicleId is Guid vehicleId
+            ? OpenTripAsync(vehicleId)
+            : OpenCaseAsync(item.Id);
+
+    private async Task OpenTripAsync(Guid vehicleId)
+    {
+        _detail = null;
+        _caseError = null;
+        _tripVehicleId = vehicleId;
+        await SetBodyLockAsync(true);
+    }
+
+    private async Task CloseTripAsync()
+    {
+        _tripVehicleId = null;
+        if (_detail is null)
+        {
+            await SetBodyLockAsync(false);
+        }
+    }
+
     private async Task OpenCaseAsync(Guid id)
     {
+        _tripVehicleId = null;
         _caseError = null;
         _comment = "";
         try
@@ -434,6 +744,7 @@
         catch (Exception ex)
         {
             _caseError = ex.Message;
+            await SetBodyLockAsync(false);
         }
     }
 
@@ -517,6 +828,65 @@
     private VehicleDto? VanOf(Guid? vehicleId)
         => vehicleId is Guid id ? _vans.FirstOrDefault(v => v.Id == id) : null;
 
+    private RouteDto? RouteOf(Guid vehicleId)
+        => _routes
+            .Where(r => r.VehicleId == vehicleId)
+            .OrderBy(r => r.Stops?.Count ?? int.MaxValue)
+            .FirstOrDefault();
+
+    private DriverNoteDto? NoteOf(Guid vehicleId)
+        => _notes.FirstOrDefault(n => n.VehicleId == vehicleId);
+
+    private List<TripHistoryItem> TripHistory(Guid vehicleId, List<RouteStopDto> stops, DriverNoteDto? note)
+    {
+        var items = new List<TripHistoryItem>();
+        if (note is not null)
+        {
+            items.Add(new TripHistoryItem(note.CreatedAtUtc, "Водитель", note.Body, null));
+        }
+
+        foreach (var stop in stops.Where(s => s.ArrivedAtUtc is not null))
+        {
+            items.Add(new TripHistoryItem(
+                stop.ArrivedAtUtc!.Value,
+                stop.Skipped ? "Пропущена" : "На месте",
+                stop.SettlementName,
+                null));
+        }
+
+        foreach (var c in _cases.Where(x => x.VehicleId == vehicleId))
+        {
+            items.Add(new TripHistoryItem(
+                c.OpenedAtUtc,
+                "Жалоба",
+                $"{c.SettlementName} · {People(c.ReportCount)}",
+                c.Id));
+        }
+
+        return items.OrderByDescending(i => i.At).ToList();
+    }
+
+    private static bool OnSite(VehicleDto van, RouteStopDto stop)
+    {
+        if (van.LastLatitude is not double lat || van.LastLongitude is not double lng)
+        {
+            return false;
+        }
+
+        return DistanceMeters(lat, lng, stop.Latitude, stop.Longitude) <= 150;
+    }
+
+    private static double DistanceMeters(double lat1, double lon1, double lat2, double lon2)
+    {
+        const double earth = 6371000;
+        var dLat = (lat2 - lat1) * Math.PI / 180;
+        var dLon = (lon2 - lon1) * Math.PI / 180;
+        var a = Math.Sin(dLat / 2) * Math.Sin(dLat / 2)
+                + Math.Cos(lat1 * Math.PI / 180) * Math.Cos(lat2 * Math.PI / 180)
+                * Math.Sin(dLon / 2) * Math.Sin(dLon / 2);
+        return earth * 2 * Math.Atan2(Math.Sqrt(a), Math.Sqrt(1 - a));
+    }
+
     private static bool IsLive(VehicleDto van)
         => string.Equals(van.LastSource, "driver-app", StringComparison.OrdinalIgnoreCase);
 
@@ -582,6 +952,7 @@
     }
 
     private sealed record RouteProgress(
+        Guid VehicleId,
         string RouteName,
         string Plate,
         string NextStop,
@@ -589,8 +960,12 @@
         string DelayLabel,
         string ScheduleLabel,
         bool Live,
-        bool HasGps)
+        bool HasGps,
+        string? DriverNote)
     {
         public bool IsLate => DelayMinutes is > 2;
+        public bool HasDriverNote => !string.IsNullOrWhiteSpace(DriverNote);
     }
+
+    private sealed record TripHistoryItem(DateTimeOffset At, string Kind, string Body, Guid? CaseId);
 }
