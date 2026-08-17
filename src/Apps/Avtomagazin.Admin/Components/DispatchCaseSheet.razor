@@ -1,0 +1,132 @@
+<div class="case-modal" @onclick="Close">
+    <div class="case-dialog" @onclick:stopPropagation="true" role="dialog" aria-modal="true">
+        <header class="case-sheet-head">
+            <div>
+                <div class="eyebrow">Инцидент</div>
+                <h2>@Detail.SettlementName</h2>
+                <p class="muted">@DispatchBoard.StatusLabel(Detail.Status) · @DispatchBoard.People(Detail.ReportCount)</p>
+            </div>
+            <button type="button" class="btn btn-ghost" @onclick="Close">Закрыть</button>
+        </header>
+        <div class="case-dialog-scroll">
+            @if (Van is not null)
+            {
+                <section class="case-block">
+                    <h3>Автолавка</h3>
+                    <p class="case-plate">@Van.PlateNumber · @Van.OperatorName</p>
+                    <ul class="contact-list">
+                        @if (!string.IsNullOrWhiteSpace(Van.DriverPhone))
+                        {
+                            <li>
+                                <span>Водитель @(Van.DriverName ?? "")</span>
+                                <a href="tel:@DispatchBoard.Digits(Van.DriverPhone)">@Van.DriverPhone</a>
+                            </li>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(Van.SellerPhone))
+                        {
+                            <li>
+                                <span>Продавец @(Van.SellerName ?? "")</span>
+                                <a href="tel:@DispatchBoard.Digits(Van.SellerPhone)">@Van.SellerPhone</a>
+                            </li>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(Van.OperatorPhone))
+                        {
+                            <li>
+                                <span>Райпо</span>
+                                <a href="tel:@DispatchBoard.Digits(Van.OperatorPhone)">@Van.OperatorPhone</a>
+                            </li>
+                        }
+                        @if (string.IsNullOrWhiteSpace(Van.DriverPhone)
+                             && string.IsNullOrWhiteSpace(Van.SellerPhone)
+                             && string.IsNullOrWhiteSpace(Van.OperatorPhone))
+                        {
+                            <li class="muted">Контактов нет — добавьте во вкладке «Парк».</li>
+                        }
+                    </ul>
+                </section>
+            }
+            else
+            {
+                <section class="case-block">
+                    <p class="muted">Автолавка по маршруту не найдена.</p>
+                </section>
+            }
+
+            <section class="case-block">
+                <h3>Действия</h3>
+                <label class="case-field">
+                    <span>Комментарий</span>
+                    <textarea value="@Comment"
+                              @oninput="OnCommentInput"
+                              rows="2"
+                              placeholder="Что сделали / что ждём"></textarea>
+                </label>
+                <div class="row">
+                    <button type="button" class="btn" disabled="@(Busy || string.IsNullOrWhiteSpace(Comment))" @onclick="AddComment">Коммент</button>
+                    <button type="button" class="btn @(Detail.Status == "in_progress" ? "" : "btn-ghost")" disabled="@Busy"
+                            @onclick="MarkInProgress">В процессе</button>
+                    <button type="button" class="btn btn-ghost" disabled="@Busy"
+                            @onclick="CloseStatus">Закрыть кейс</button>
+                    @if (Detail.Status == "closed")
+                    {
+                        <button type="button" class="btn btn-ghost" disabled="@Busy"
+                                @onclick="Reopen">Снова открыть</button>
+                    }
+                </div>
+            </section>
+
+            <section class="case-block">
+                <h3>История</h3>
+                @if (Detail.Events.Count == 0)
+                {
+                    <p class="muted">Пока пусто.</p>
+                }
+                else
+                {
+                    <ul class="timeline">
+                        @foreach (var ev in Detail.Events.OrderByDescending(e => e.CreatedAtUtc))
+                        {
+                            <li>
+                                <div class="timeline-top">
+                                    <strong>@DispatchBoard.EventKind(ev)</strong>
+                                    <time>@ev.CreatedAtUtc.ToLocalTime().ToString("dd.MM HH:mm")</time>
+                                </div>
+                                <p>@ev.Body</p>
+                                @if (!string.IsNullOrWhiteSpace(ev.StopLabel))
+                                {
+                                    <p class="tiny muted">@ev.StopLabel</p>
+                                }
+                                @if (!string.IsNullOrWhiteSpace(ev.AuthorName) || !string.IsNullOrWhiteSpace(ev.AuthorEmail))
+                                {
+                                    <p class="tiny muted">@(ev.AuthorName ?? ev.AuthorEmail)</p>
+                                }
+                            </li>
+                        }
+                    </ul>
+                }
+            </section>
+
+            @if (!string.IsNullOrEmpty(Error))
+            {
+                <div class="alert">@Error</div>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public CaseDetailDto Detail { get; set; } = null!;
+    [Parameter] public VehicleDto? Van { get; set; }
+    [Parameter] public string Comment { get; set; } = "";
+    [Parameter] public EventCallback<string> CommentChanged { get; set; }
+    [Parameter] public string? Error { get; set; }
+    [Parameter] public bool Busy { get; set; }
+    [Parameter] public EventCallback Close { get; set; }
+    [Parameter] public EventCallback AddComment { get; set; }
+    [Parameter] public EventCallback MarkInProgress { get; set; }
+    [Parameter] public EventCallback CloseStatus { get; set; }
+    [Parameter] public EventCallback Reopen { get; set; }
+
+    private Task OnCommentInput(ChangeEventArgs e)
+        => CommentChanged.InvokeAsync(e.Value?.ToString() ?? "");
+}
