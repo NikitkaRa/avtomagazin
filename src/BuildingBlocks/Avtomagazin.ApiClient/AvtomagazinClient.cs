@@ -48,16 +48,29 @@ public sealed class AvtomagazinClient(HttpClient http, IAccessTokenAccessor? tok
         PropertyNameCaseInsensitive = true
     };
 
-    private void ApplyAuth()
+    private void AttachAuth(HttpRequestMessage request)
     {
         if (tokens?.AccessToken is { Length: > 0 } token)
         {
-            http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
         }
-        else
+    }
+
+    private async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+    {
+        AttachAuth(request);
+        return await http.SendAsync(request, ct);
+    }
+
+    private async Task<HttpResponseMessage> SendJsonAsync(HttpMethod method, string path, object? body, CancellationToken ct)
+    {
+        var request = new HttpRequestMessage(method, path);
+        if (body is not null)
         {
-            http.DefaultRequestHeaders.Remove("Authorization");
+            request.Content = JsonContent.Create(body, options: JsonOptions);
         }
+
+        return await SendAsync(request, ct);
     }
 
     public Task<LoginResponse?> LoginAsync(string email, string password, CancellationToken ct = default)
@@ -74,8 +87,7 @@ public sealed class AvtomagazinClient(HttpClient http, IAccessTokenAccessor? tok
 
     private async Task<LoginResponse?> AuthAsync(string path, object body, CancellationToken ct)
     {
-        ApplyAuth();
-        var response = await http.PostAsJsonAsync(path, body, ct);
+        using var response = await SendJsonAsync(HttpMethod.Post, path, body, ct);
         if (response.StatusCode == System.Net.HttpStatusCode.Conflict)
         {
             throw new InvalidOperationException("Этот email уже зарегистрирован.");
@@ -108,8 +120,8 @@ public sealed class AvtomagazinClient(HttpClient http, IAccessTokenAccessor? tok
 
     public async Task AssignUserVehicleAsync(Guid userId, Guid? vehicleId, CancellationToken ct = default)
     {
-        ApplyAuth();
-        var response = await http.PostAsJsonAsync(
+        using var response = await SendJsonAsync(
+            HttpMethod.Post,
             $"identity/api/users/{userId}/assign-vehicle",
             new { vehicleId },
             ct);
@@ -119,29 +131,30 @@ public sealed class AvtomagazinClient(HttpClient http, IAccessTokenAccessor? tok
             throw new InvalidOperationException(payload?.Error ?? "Не удалось назначить автолавку");
         }
 
-        response.EnsureSuccessStatusCode();
+        await EnsureSuccessAsync(response, ct);
     }
 
     public async Task<AccountDto?> ApproveUserAsync(Guid id, string? role = null, Guid? vehicleId = null, CancellationToken ct = default)
     {
-        ApplyAuth();
-        var response = await http.PostAsJsonAsync($"identity/api/users/{id}/approve", new { role, vehicleId }, ct);
-        response.EnsureSuccessStatusCode();
+        using var response = await SendJsonAsync(
+            HttpMethod.Post,
+            $"identity/api/users/{id}/approve",
+            new { role, vehicleId },
+            ct);
+        await EnsureSuccessAsync(response, ct);
         return await response.Content.ReadFromJsonAsync<AccountDto>(JsonOptions, ct);
     }
 
     public async Task RejectUserAsync(Guid id, CancellationToken ct = default)
     {
-        ApplyAuth();
-        var response = await http.PostAsJsonAsync($"identity/api/users/{id}/reject", new { }, ct);
-        response.EnsureSuccessStatusCode();
+        using var response = await SendJsonAsync(HttpMethod.Post, $"identity/api/users/{id}/reject", new { }, ct);
+        await EnsureSuccessAsync(response, ct);
     }
 
     public async Task DisableUserAsync(Guid id, CancellationToken ct = default)
     {
-        ApplyAuth();
-        var response = await http.PostAsJsonAsync($"identity/api/users/{id}/disable", new { }, ct);
-        response.EnsureSuccessStatusCode();
+        using var response = await SendJsonAsync(HttpMethod.Post, $"identity/api/users/{id}/disable", new { }, ct);
+        await EnsureSuccessAsync(response, ct);
     }
 
     public Task<LoginResponse?> ChangePasswordAsync(string current, string next, CancellationToken ct = default)
@@ -149,67 +162,63 @@ public sealed class AvtomagazinClient(HttpClient http, IAccessTokenAccessor? tok
 
     public async Task<StaffProfileDto?> GetProfileAsync(CancellationToken ct = default)
     {
-        ApplyAuth();
-        var response = await http.GetAsync("identity/api/auth/me", ct);
+        using var response = await SendAsync(new HttpRequestMessage(HttpMethod.Get, "identity/api/auth/me"), ct);
         await EnsureSuccessAsync(response, ct);
         return await response.Content.ReadFromJsonAsync<StaffProfileDto>(JsonOptions, ct);
     }
 
     public async Task<StaffProfileDto?> UpdateProfileAsync(UpdateProfileRequest request, CancellationToken ct = default)
     {
-        ApplyAuth();
-        var response = await http.PatchAsJsonAsync("identity/api/auth/profile", request, ct);
+        using var response = await SendJsonAsync(HttpMethod.Patch, "identity/api/auth/profile", request, ct);
         await EnsureSuccessAsync(response, ct);
         return await response.Content.ReadFromJsonAsync<StaffProfileDto>(JsonOptions, ct);
     }
 
     public async Task ResetUserPasswordAsync(Guid id, string password, CancellationToken ct = default)
     {
-        ApplyAuth();
-        var response = await http.PostAsJsonAsync($"identity/api/users/{id}/password", new { password }, ct);
+        using var response = await SendJsonAsync(
+            HttpMethod.Post,
+            $"identity/api/users/{id}/password",
+            new { password },
+            ct);
         if (response.StatusCode == System.Net.HttpStatusCode.BadRequest)
         {
             var payload = await response.Content.ReadFromJsonAsync<ErrorPayload>(JsonOptions, ct);
             throw new InvalidOperationException(payload?.Error ?? "Пароль не принят.");
         }
 
-        response.EnsureSuccessStatusCode();
+        await EnsureSuccessAsync(response, ct);
     }
 
     public Task<List<VehicleDto>> GetVehiclesAsync(CancellationToken ct = default)
         => GetListAsync<VehicleDto>("fleet/api/vehicles", ct);
 
     public async Task<VehicleDto?> GetVehicleAsync(Guid id, CancellationToken ct = default)
-    {
-        ApplyAuth();
-        return await http.GetFromJsonAsync<VehicleDto>($"fleet/api/vehicles/{id}", JsonOptions, ct);
-    }
+        => await GetJsonAsync<VehicleDto>($"fleet/api/vehicles/{id}", ct);
 
     public async Task<VehicleDto?> CreateVehicleAsync(UpsertVehicleRequest request, CancellationToken ct = default)
     {
-        ApplyAuth();
-        var response = await http.PostAsJsonAsync("fleet/api/vehicles", request, ct);
-        await EnsureVehicleOkAsync(response, ct);
+        using var response = await SendJsonAsync(HttpMethod.Post, "fleet/api/vehicles", request, ct);
+        await EnsureSuccessAsync(response, ct);
         return await response.Content.ReadFromJsonAsync<VehicleDto>(JsonOptions, ct);
     }
 
     public async Task<VehicleDto?> UpdateVehicleAsync(Guid id, UpsertVehicleRequest request, CancellationToken ct = default)
     {
-        ApplyAuth();
-        var response = await http.PutAsJsonAsync($"fleet/api/vehicles/{id}", request, ct);
-        await EnsureVehicleOkAsync(response, ct);
+        using var response = await SendJsonAsync(HttpMethod.Put, $"fleet/api/vehicles/{id}", request, ct);
+        await EnsureSuccessAsync(response, ct);
         return await response.Content.ReadFromJsonAsync<VehicleDto>(JsonOptions, ct);
     }
 
     public async Task SetVehicleActiveAsync(Guid id, bool isActive, CancellationToken ct = default)
     {
-        ApplyAuth();
-        var response = await http.PatchAsJsonAsync($"fleet/api/vehicles/{id}/active", new { isActive }, ct);
-        response.EnsureSuccessStatusCode();
+        using var response = await SendJsonAsync(
+            HttpMethod.Patch,
+            $"fleet/api/vehicles/{id}/active",
+            new { isActive },
+            ct);
+        await EnsureSuccessAsync(response, ct);
     }
-
-    private async Task EnsureVehicleOkAsync(HttpResponseMessage response, CancellationToken ct)
-        => await EnsureSuccessAsync(response, ct);
 
     private async Task EnsureSuccessAsync(HttpResponseMessage response, CancellationToken ct)
     {
@@ -240,8 +249,8 @@ public sealed class AvtomagazinClient(HttpClient http, IAccessTokenAccessor? tok
 
     public async Task IngestPositionAsync(Guid vehicleId, double latitude, double longitude, double? speedKmh = null, CancellationToken ct = default)
     {
-        ApplyAuth();
-        var response = await http.PostAsJsonAsync(
+        using var response = await SendJsonAsync(
+            HttpMethod.Post,
             $"fleet/api/vehicles/{vehicleId}/positions",
             new { latitude, longitude, speedKmh, source = GpsSources.DriverApp },
             ct);
@@ -255,38 +264,32 @@ public sealed class AvtomagazinClient(HttpClient http, IAccessTokenAccessor? tok
         => GetListAsync<RouteDto>(catalog ? "routing/api/routes?catalog=true" : "routing/api/routes", ct);
 
     public async Task<RouteDto?> GetRouteAsync(Guid routeId, CancellationToken ct = default)
-    {
-        ApplyAuth();
-        return await http.GetFromJsonAsync<RouteDto>($"routing/api/routes/{routeId}", JsonOptions, ct);
-    }
+        => await GetJsonAsync<RouteDto>($"routing/api/routes/{routeId}", ct);
 
     public async Task<RouteDto?> CreateRouteAsync(CreateRouteRequest request, CancellationToken ct = default)
     {
-        ApplyAuth();
-        var response = await http.PostAsJsonAsync("routing/api/routes", request, ct);
+        using var response = await SendJsonAsync(HttpMethod.Post, "routing/api/routes", request, ct);
         await EnsureSuccessAsync(response, ct);
         return await response.Content.ReadFromJsonAsync<RouteDto>(JsonOptions, ct);
     }
 
     public async Task<RouteDto?> UpdateRouteAsync(Guid routeId, UpdateRouteRequest request, CancellationToken ct = default)
     {
-        ApplyAuth();
-        var response = await http.PatchAsJsonAsync($"routing/api/routes/{routeId}", request, ct);
+        using var response = await SendJsonAsync(HttpMethod.Patch, $"routing/api/routes/{routeId}", request, ct);
         await EnsureSuccessAsync(response, ct);
         return await response.Content.ReadFromJsonAsync<RouteDto>(JsonOptions, ct);
     }
 
     public async Task AddStopAsync(Guid routeId, CreateStopRequest request, CancellationToken ct = default)
     {
-        ApplyAuth();
-        var response = await http.PostAsJsonAsync($"routing/api/routes/{routeId}/stops", request, ct);
+        using var response = await SendJsonAsync(HttpMethod.Post, $"routing/api/routes/{routeId}/stops", request, ct);
         await EnsureSuccessAsync(response, ct);
     }
 
     public async Task<RouteDto?> ReplaceRouteStopsAsync(Guid routeId, IEnumerable<ReplaceStopItem> stops, CancellationToken ct = default)
     {
-        ApplyAuth();
-        var response = await http.PutAsJsonAsync(
+        using var response = await SendJsonAsync(
+            HttpMethod.Put,
             $"routing/api/routes/{routeId}/stops",
             new ReplaceStopsRequest(stops.ToList()),
             ct);
@@ -296,8 +299,7 @@ public sealed class AvtomagazinClient(HttpClient http, IAccessTokenAccessor? tok
 
     public async Task DeleteRouteAsync(Guid routeId, CancellationToken ct = default)
     {
-        ApplyAuth();
-        var response = await http.DeleteAsync($"routing/api/routes/{routeId}", ct);
+        using var response = await SendAsync(new HttpRequestMessage(HttpMethod.Delete, $"routing/api/routes/{routeId}"), ct);
         if (response.StatusCode != System.Net.HttpStatusCode.NotFound)
         {
             await EnsureSuccessAsync(response, ct);
@@ -306,8 +308,7 @@ public sealed class AvtomagazinClient(HttpClient http, IAccessTokenAccessor? tok
 
     public async Task DeleteStopAsync(Guid stopId, CancellationToken ct = default)
     {
-        ApplyAuth();
-        var response = await http.DeleteAsync($"routing/api/stops/{stopId}", ct);
+        using var response = await SendAsync(new HttpRequestMessage(HttpMethod.Delete, $"routing/api/stops/{stopId}"), ct);
         if (response.StatusCode != System.Net.HttpStatusCode.NotFound)
         {
             await EnsureSuccessAsync(response, ct);
@@ -316,9 +317,8 @@ public sealed class AvtomagazinClient(HttpClient http, IAccessTokenAccessor? tok
 
     public async Task ChangeScheduleAsync(ChangeScheduleRequest request, CancellationToken ct = default)
     {
-        ApplyAuth();
-        var response = await http.PostAsJsonAsync("routing/api/schedule/change", request, ct);
-        response.EnsureSuccessStatusCode();
+        using var response = await SendJsonAsync(HttpMethod.Post, "routing/api/schedule/change", request, ct);
+        await EnsureSuccessAsync(response, ct);
     }
 
     public Task<List<DriverNoteDto>> GetDriverNotesAsync(CancellationToken ct = default)
@@ -326,15 +326,15 @@ public sealed class AvtomagazinClient(HttpClient http, IAccessTokenAccessor? tok
 
     public async Task PostDriverNoteAsync(PostDriverNoteRequest request, CancellationToken ct = default)
     {
-        ApplyAuth();
-        var response = await http.PostAsJsonAsync("routing/api/driver-notes", request, JsonOptions, ct);
+        using var response = await SendJsonAsync(HttpMethod.Post, "routing/api/driver-notes", request, ct);
         await EnsureSuccessAsync(response, ct);
     }
 
     public async Task ClearDriverNoteAsync(Guid vehicleId, CancellationToken ct = default)
     {
-        ApplyAuth();
-        var response = await http.DeleteAsync($"routing/api/driver-notes/{vehicleId}", ct);
+        using var response = await SendAsync(
+            new HttpRequestMessage(HttpMethod.Delete, $"routing/api/driver-notes/{vehicleId}"),
+            ct);
         await EnsureSuccessAsync(response, ct);
     }
 
@@ -351,29 +351,28 @@ public sealed class AvtomagazinClient(HttpClient http, IAccessTokenAccessor? tok
 
     public async Task RecordCoverageAsync(CoverageVisitRequest request, CancellationToken ct = default)
     {
-        ApplyAuth();
-        var response = await http.PostAsJsonAsync("routing/api/coverage/visit", request, ct);
-        response.EnsureSuccessStatusCode();
+        using var response = await SendJsonAsync(HttpMethod.Post, "routing/api/coverage/visit", request, ct);
+        await EnsureSuccessAsync(response, ct);
     }
 
     public async Task ArriveAtStopAsync(Guid stopId, Guid vehicleId, bool skipped = false, CancellationToken ct = default)
     {
-        ApplyAuth();
-        var response = await http.PostAsJsonAsync(
+        using var response = await SendJsonAsync(
+            HttpMethod.Post,
             $"routing/api/stops/{stopId}/arrived",
             new { vehicleId, skipped },
             ct);
-        response.EnsureSuccessStatusCode();
+        await EnsureSuccessAsync(response, ct);
     }
 
     public async Task ReportStopPresenceAsync(Guid stopId, string kind, string deviceToken, CancellationToken ct = default)
     {
-        ApplyAuth();
-        var response = await http.PostAsJsonAsync(
+        using var response = await SendJsonAsync(
+            HttpMethod.Post,
             $"routing/api/stops/{stopId}/reports",
             new { kind, deviceToken },
             ct);
-        response.EnsureSuccessStatusCode();
+        await EnsureSuccessAsync(response, ct);
     }
 
     public Task<List<FavoriteDto>> GetFavoritesAsync(CancellationToken ct = default)
@@ -384,21 +383,22 @@ public sealed class AvtomagazinClient(HttpClient http, IAccessTokenAccessor? tok
 
     public async Task AddFavoriteStopAsync(string deviceToken, Guid stopId, string settlementName, string platform = "web", CancellationToken ct = default)
     {
-        ApplyAuth();
-        var response = await http.PostAsJsonAsync(
+        using var response = await SendJsonAsync(
+            HttpMethod.Post,
             "notifications/api/favorites",
             new { deviceToken, stopId, settlementName, platform },
             ct);
-        response.EnsureSuccessStatusCode();
+        await EnsureSuccessAsync(response, ct);
     }
 
     public async Task RemoveFavoriteStopAsync(Guid stopId, CancellationToken ct = default)
     {
-        ApplyAuth();
-        var response = await http.DeleteAsync($"notifications/api/favorites/{stopId}", ct);
+        using var response = await SendAsync(
+            new HttpRequestMessage(HttpMethod.Delete, $"notifications/api/favorites/{stopId}"),
+            ct);
         if (response.StatusCode != System.Net.HttpStatusCode.NotFound)
         {
-            response.EnsureSuccessStatusCode();
+            await EnsureSuccessAsync(response, ct);
         }
     }
 
@@ -414,39 +414,40 @@ public sealed class AvtomagazinClient(HttpClient http, IAccessTokenAccessor? tok
     }
 
     public async Task<CaseDetailDto?> GetCaseAsync(Guid id, CancellationToken ct = default)
-    {
-        ApplyAuth();
-        return await http.GetFromJsonAsync<CaseDetailDto>($"routing/api/cases/{id}", JsonOptions, ct);
-    }
+        => await GetJsonAsync<CaseDetailDto>($"routing/api/cases/{id}", ct);
 
     public async Task<CaseDetailDto?> AddCaseCommentAsync(Guid id, string body, CancellationToken ct = default)
     {
-        ApplyAuth();
-        var response = await http.PostAsJsonAsync($"routing/api/cases/{id}/comments", new { body }, ct);
-        response.EnsureSuccessStatusCode();
+        using var response = await SendJsonAsync(
+            HttpMethod.Post,
+            $"routing/api/cases/{id}/comments",
+            new { body },
+            ct);
+        await EnsureSuccessAsync(response, ct);
         return await response.Content.ReadFromJsonAsync<CaseDetailDto>(JsonOptions, ct);
     }
 
     public async Task<CaseDetailDto?> SetCaseStatusAsync(Guid id, string status, string? comment = null, CancellationToken ct = default)
     {
-        ApplyAuth();
-        var response = await http.PatchAsJsonAsync($"routing/api/cases/{id}/status", new { status, comment }, ct);
-        response.EnsureSuccessStatusCode();
+        using var response = await SendJsonAsync(
+            HttpMethod.Patch,
+            $"routing/api/cases/{id}/status",
+            new { status, comment },
+            ct);
+        await EnsureSuccessAsync(response, ct);
         return await response.Content.ReadFromJsonAsync<CaseDetailDto>(JsonOptions, ct);
     }
 
     public async Task UpdateVehicleContactsAsync(Guid id, UpdateVehicleContactsRequest request, CancellationToken ct = default)
     {
-        ApplyAuth();
-        var response = await http.PatchAsJsonAsync($"fleet/api/vehicles/{id}/contacts", request, ct);
-        response.EnsureSuccessStatusCode();
+        using var response = await SendJsonAsync(HttpMethod.Patch, $"fleet/api/vehicles/{id}/contacts", request, ct);
+        await EnsureSuccessAsync(response, ct);
     }
 
     public async Task RegisterDeviceAsync(DeviceRegistrationRequest request, CancellationToken ct = default)
     {
-        ApplyAuth();
-        var response = await http.PostAsJsonAsync("notifications/api/devices/register", request, ct);
-        response.EnsureSuccessStatusCode();
+        using var response = await SendJsonAsync(HttpMethod.Post, "notifications/api/devices/register", request, ct);
+        await EnsureSuccessAsync(response, ct);
     }
 
     public Task<List<NotificationDto>> GetNotificationsAsync(string? settlement = null, CancellationToken ct = default)
@@ -459,25 +460,18 @@ public sealed class AvtomagazinClient(HttpClient http, IAccessTokenAccessor? tok
 
     public async Task<SnapshotDto> GetSnapshotAsync(CancellationToken ct = default)
     {
-        var vehiclesTask = SafeListAsync(() => GetVehiclesAsync(ct));
-        var routesTask = SafeListAsync(() => GetRoutesAsync(ct));
-        var notesTask = SafeListAsync(() => GetDriverNotesAsync(ct));
+        var vehiclesTask = GetVehiclesAsync(ct);
+        var routesTask = GetRoutesAsync(ct);
+        var notesTask = SoftListAsync(() => GetDriverNotesAsync(ct));
         await Task.WhenAll(vehiclesTask, routesTask, notesTask);
-        var vehicles = await vehiclesTask;
-        var routes = await routesTask;
-        if (vehicles.Count == 0 && routes.Count == 0)
-        {
-            throw new HttpRequestException("Нет ответа от сервера (авто и маршруты недоступны)");
-        }
-
         return new SnapshotDto(
             DateTimeOffset.UtcNow,
-            vehicles,
-            routes,
+            await vehiclesTask,
+            await routesTask,
             await notesTask);
     }
 
-    private static async Task<List<T>> SafeListAsync<T>(Func<Task<List<T>>> load)
+    private static async Task<List<T>> SoftListAsync<T>(Func<Task<List<T>>> load)
     {
         try
         {
@@ -494,7 +488,7 @@ public sealed class AvtomagazinClient(HttpClient http, IAccessTokenAccessor? tok
         var vehiclesTask = GetVehiclesAsync(ct);
         var casesTask = GetCasesAsync(caseStatus, ct);
         var routesTask = GetRoutesAsync(ct);
-        var notesTask = SafeListAsync(() => GetDriverNotesAsync(ct));
+        var notesTask = SoftListAsync(() => GetDriverNotesAsync(ct));
         await Task.WhenAll(vehiclesTask, casesTask, routesTask, notesTask);
         return new DispatchSnapshotDto(
             DateTimeOffset.UtcNow,
@@ -504,15 +498,18 @@ public sealed class AvtomagazinClient(HttpClient http, IAccessTokenAccessor? tok
             await notesTask);
     }
 
+    private async Task<T?> GetJsonAsync<T>(string path, CancellationToken ct)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, path);
+        using var response = await SendAsync(request, ct);
+        await EnsureSuccessAsync(response, ct);
+        return await response.Content.ReadFromJsonAsync<T>(JsonOptions, ct);
+    }
+
     private async Task<List<T>> GetListAsync<T>(string path, CancellationToken ct)
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, path);
-        if (tokens?.AccessToken is { Length: > 0 } token)
-        {
-            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
-        }
-
-        var response = await http.SendAsync(request, ct);
+        using var response = await SendAsync(request, ct);
         await EnsureSuccessAsync(response, ct);
         var items = await response.Content.ReadFromJsonAsync<List<T>>(JsonOptions, ct);
         return items ?? [];
@@ -520,4 +517,3 @@ public sealed class AvtomagazinClient(HttpClient http, IAccessTokenAccessor? tok
 }
 
 internal sealed record ErrorPayload(string? Error);
-

@@ -71,4 +71,22 @@ internal static class CoverageVisits
 
     public static async Task<RouteStop?> FindStopAsync(RoutingDbContext db, Guid stopId, CancellationToken ct = default)
         => await db.Stops.FirstOrDefaultAsync(s => s.Id == stopId, ct);
+
+    public static async Task<IResult?> ForbidStopNotOnVehicleAsync(
+        RoutingDbContext db,
+        RouteStop stop,
+        Guid vehicleId,
+        CancellationToken ct = default)
+    {
+        var onRoute = await db.Routes.AsNoTracking()
+            .AnyAsync(r => r.Id == stop.RouteId && r.VehicleId == vehicleId, ct);
+        if (onRoute)
+        {
+            return null;
+        }
+
+        return Results.Json(
+            new { error = "Остановка не на маршруте этой автолавки" },
+            statusCode: StatusCodes.Status403Forbidden);
+    }
 }

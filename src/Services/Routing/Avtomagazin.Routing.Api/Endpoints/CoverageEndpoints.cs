@@ -33,7 +33,12 @@ public static class CoverageEndpoints
                     return Results.NotFound();
                 }
 
-                var arrivedAt = request.ArrivedAtUtc ?? DateTimeOffset.UtcNow;
+                if (await CoverageVisits.ForbidStopNotOnVehicleAsync(db, stop, request.VehicleId, ct) is { } mismatch)
+                {
+                    return mismatch;
+                }
+
+                var arrivedAt = DateTimeOffset.UtcNow;
                 var visit = CoverageVisits.Create(request.VehicleId, stop, arrivedAt);
                 await CoverageVisits.SaveAsync(db, visit, ct);
                 await CoverageVisits.PublishCoverageAsync(visit, bus, gov, ct);
@@ -61,6 +66,11 @@ public static class CoverageEndpoints
                 if (stop is null)
                 {
                     return Results.NotFound();
+                }
+
+                if (await CoverageVisits.ForbidStopNotOnVehicleAsync(db, stop, request.VehicleId, ct) is { } mismatch)
+                {
+                    return mismatch;
                 }
 
                 var arrivedAt = DateTimeOffset.UtcNow;

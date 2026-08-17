@@ -26,11 +26,11 @@ public sealed class StaffSession : IAccessTokenAccessor
     public string? AccessToken { get; private set; }
 
     public bool IsAuthenticated => Role is not null && AccessToken is { Length: > 0 };
-    public bool IsDriver => Role == "driver";
-    public bool IsSeller => Role == "seller";
-    public bool IsVanCrew => Role is "driver" or "seller";
-    public bool IsAdmin => Role == "admin";
-    public bool IsOperator => Role is "operator" or "admin";
+    public bool IsDriver => Role == Roles.Driver;
+    public bool IsSeller => Role == Roles.Seller;
+    public bool IsVanCrew => Roles.IsVanCrew(Role ?? "");
+    public bool IsAdmin => Role == Roles.Admin;
+    public bool IsOperator => Role is Roles.Operator or Roles.Admin;
 
     /// <summary>True after browser storage was read (or sign-in/out). False while JS/circuit is not ready.</summary>
     public bool IsRestored => _restored;

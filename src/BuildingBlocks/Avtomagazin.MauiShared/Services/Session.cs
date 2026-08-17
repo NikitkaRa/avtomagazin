@@ -14,12 +14,14 @@ public sealed class Session : IAccessTokenAccessor
     public string DeviceToken { get; }
 
     public bool IsAuthenticated => !string.IsNullOrWhiteSpace(AccessToken);
-    public bool IsResident => Role == "resident";
-    public bool IsDriver => Role == "driver";
-    public bool IsSeller => Role == "seller";
-    public bool IsVanCrew => Role is "driver" or "seller";
-    public bool IsOperator => Role is "operator" or "admin";
+    public bool IsResident => Role == Roles.Resident;
+    public bool IsDriver => Role == Roles.Driver;
+    public bool IsSeller => Role == Roles.Seller;
+    public bool IsVanCrew => Roles.IsVanCrew(Role ?? "");
+    public bool IsOperator => Role is Roles.Operator or Roles.Admin;
     public string Platform => DeviceInfo.Platform == DevicePlatform.iOS ? "ios" : "android";
+
+    public event Action? Unauthorized;
 
     public Session()
     {
@@ -81,5 +83,16 @@ public sealed class Session : IAccessTokenAccessor
         Preferences.Default.Remove("email");
         Preferences.Default.Remove("userId");
         Preferences.Default.Remove("vehicleId");
+    }
+
+    public void NotifyUnauthorized()
+    {
+        if (!IsAuthenticated && AccessToken is null)
+        {
+            return;
+        }
+
+        SignOut();
+        Unauthorized?.Invoke();
     }
 }

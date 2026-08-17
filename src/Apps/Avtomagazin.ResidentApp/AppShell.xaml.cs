@@ -12,7 +12,11 @@ public partial class AppShell : Shell, IAppHost
         InitializeComponent();
         _services = services;
         Routing.RegisterRoute("stop", typeof(ResidentStopPage));
+        _services.GetRequiredService<Session>().Unauthorized += OnUnauthorized;
     }
+
+    private void OnUnauthorized()
+        => MainThread.BeginInvokeOnMainThread(ShowLogin);
 
     public void ShowSignedIn()
     {

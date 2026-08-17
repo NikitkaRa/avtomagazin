@@ -39,6 +39,17 @@ app.Use(async (context, next) =>
 });
 app.UseAvtomagazinObservability();
 
+app.Use(async (context, next) =>
+{
+    if (context.Request.Path.StartsWithSegments("/identity/api/internal"))
+    {
+        context.Response.StatusCode = StatusCodes.Status404NotFound;
+        return;
+    }
+
+    await next();
+});
+
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();

@@ -9,31 +9,8 @@ public static class ServiceDay
 {
     public static (DateTimeOffset StartUtc, DateTimeOffset EndUtc) TodayBounds(DateTimeOffset? utcNow = null)
     {
-        var now = utcNow ?? DateTimeOffset.UtcNow;
-        var tz = ResolveBelarusTz();
-        var local = TimeZoneInfo.ConvertTime(now, tz);
-        var localMidnight = new DateTime(local.Year, local.Month, local.Day, 0, 0, 0, DateTimeKind.Unspecified);
-        var startUtc = TimeZoneInfo.ConvertTimeToUtc(localMidnight, tz);
-        return (new DateTimeOffset(startUtc, TimeSpan.Zero), new DateTimeOffset(startUtc.AddDays(1), TimeSpan.Zero));
-    }
-
-    public static TimeZoneInfo ResolveBelarusTz()
-    {
-        foreach (var id in new[] { "Europe/Minsk", "Belarus Standard Time" })
-        {
-            try
-            {
-                return TimeZoneInfo.FindSystemTimeZoneById(id);
-            }
-            catch (TimeZoneNotFoundException)
-            {
-            }
-            catch (InvalidTimeZoneException)
-            {
-            }
-        }
-
-        return TimeZoneInfo.CreateCustomTimeZone("Europe/Minsk", TimeSpan.FromHours(3), "Minsk", "Minsk");
+        var start = BelarusTime.TodayAtLocalClock(utcNow ?? DateTimeOffset.UtcNow, 0, 0);
+        return (start, start.AddDays(1));
     }
 }
 

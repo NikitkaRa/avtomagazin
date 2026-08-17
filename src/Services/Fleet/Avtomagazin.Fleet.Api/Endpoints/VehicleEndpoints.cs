@@ -172,7 +172,7 @@ public static class VehicleEndpoints
                     return Results.NotFound();
                 }
 
-                var recordedAt = request.RecordedAtUtc ?? DateTimeOffset.UtcNow;
+                var recordedAt = DateTimeOffset.UtcNow;
                 var position = new VehiclePosition
                 {
                     Id = Guid.NewGuid(),
@@ -181,7 +181,7 @@ public static class VehicleEndpoints
                     Longitude = request.Longitude,
                     SpeedKmh = request.SpeedKmh,
                     RecordedAtUtc = recordedAt,
-                    Source = request.Source ?? GpsSources.Manual
+                    Source = GpsSources.ForHttpIngest(principal.Role())
                 };
 
                 vehicle.LastLatitude = position.Latitude;

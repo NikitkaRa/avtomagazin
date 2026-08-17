@@ -6,7 +6,7 @@ public partial class LoginPage : ContentPage
     private readonly ApiHub _api;
     private readonly SnapshotStore _snapshot;
     private readonly AppFlavor _flavor;
-    private string _staffRole = "driver";
+    private string _staffRole = Roles.Driver;
     private bool _registerMode;
     private bool _showPassword;
 
@@ -19,7 +19,7 @@ public partial class LoginPage : ContentPage
         _flavor = flavor;
         TitleLabel.Text = string.IsNullOrWhiteSpace(flavor.Subtitle) ? "Вход" : flavor.Subtitle;
         ModeButton.IsVisible = flavor.AllowRegister;
-        StaffRoleBlock.IsVisible = flavor.Client == "staff";
+        StaffRoleBlock.IsVisible = flavor.Client == AuthClients.Staff;
         BgImage.Source = ImageSource.FromFile("login_bg.png");
         ApplyMode();
     }
@@ -33,27 +33,27 @@ public partial class LoginPage : ContentPage
 
     private void OnPickDriver(object? sender, EventArgs e)
     {
-        _staffRole = "driver";
+        _staffRole = Roles.Driver;
         HighlightStaffRole();
     }
 
     private void OnPickSeller(object? sender, EventArgs e)
     {
-        _staffRole = "seller";
+        _staffRole = Roles.Seller;
         HighlightStaffRole();
     }
 
     private void OnPickDispatcher(object? sender, EventArgs e)
     {
-        _staffRole = "operator";
+        _staffRole = Roles.Operator;
         HighlightStaffRole();
     }
 
     private void HighlightStaffRole()
     {
-        PaintRole(DriverRoleButton, _staffRole == "driver");
-        PaintRole(SellerRoleButton, _staffRole == "seller");
-        PaintRole(DispatcherRoleButton, _staffRole == "operator");
+        PaintRole(DriverRoleButton, _staffRole == Roles.Driver);
+        PaintRole(SellerRoleButton, _staffRole == Roles.Seller);
+        PaintRole(DispatcherRoleButton, _staffRole == Roles.Operator);
     }
 
     private static void PaintRole(Button button, bool on)
@@ -91,7 +91,7 @@ public partial class LoginPage : ContentPage
         try
         {
             var login = register
-                ? await _api.Client.RegisterAsync(email, password, NameEntry.Text, client, client == "staff" ? _staffRole : null)
+                ? await _api.Client.RegisterAsync(email, password, NameEntry.Text, client, client == AuthClients.Staff ? _staffRole : null)
                 : await _api.Client.LoginAsync(email, password);
             if (login is null)
             {
@@ -99,7 +99,7 @@ public partial class LoginPage : ContentPage
                 return;
             }
 
-            if (string.Equals(login.Status, "pending", StringComparison.OrdinalIgnoreCase)
+            if (string.Equals(login.Status, UserStatuses.Pending, StringComparison.OrdinalIgnoreCase)
                 || string.IsNullOrWhiteSpace(login.AccessToken))
             {
                 ErrorLabel.Text = "Заявка отправлена. Ждите подтверждения админа.";
@@ -110,7 +110,7 @@ public partial class LoginPage : ContentPage
 
             if (!_flavor.AllowedRoles.Contains(login.Role))
             {
-                ErrorLabel.Text = client == "resident"
+                ErrorLabel.Text = client == AuthClients.Resident
                     ? "Это аккаунт персонала — откройте приложение персонала."
                     : "Это аккаунт жителя — откройте приложение жителя.";
                 return;

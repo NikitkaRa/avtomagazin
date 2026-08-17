@@ -68,7 +68,7 @@
                 return;
             }
 
-            if (login.Role is not ("driver" or "seller" or "operator" or "admin"))
+            if (login.Role is not (Roles.Driver or Roles.Seller or Roles.Operator or Roles.Admin))
             {
                 _error = "Этот аккаунт для жителей. Откройте приложение жителя.";
                 return;

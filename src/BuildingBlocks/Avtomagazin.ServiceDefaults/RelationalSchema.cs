@@ -16,8 +16,8 @@ public static class RelationalSchema
 
         if (await NeedsBaselineAsync(db, ct))
         {
-            await BaselineAsync(db, ct);
-            return;
+            throw new InvalidOperationException(
+                "Database has tables but no EF migration history. Restore __EFMigrationsHistory or migrate from a clean database. Automatic baseline is disabled.");
         }
 
         await db.Database.MigrateAsync(ct);
@@ -45,21 +45,5 @@ public static class RelationalSchema
             """;
         var result = await cmd.ExecuteScalarAsync(ct);
         return result is true;
-    }
-
-    private static async Task BaselineAsync(DbContext db, CancellationToken ct)
-    {
-        var history = db.GetService<IHistoryRepository>();
-        var create = history.GetCreateIfNotExistsScript();
-        if (!string.IsNullOrWhiteSpace(create))
-        {
-            await db.Database.ExecuteSqlRawAsync(create, ct);
-        }
-
-        var version = typeof(HistoryRepository).Assembly.GetName().Version?.ToString(3) ?? "10.0.11";
-        foreach (var id in db.Database.GetMigrations())
-        {
-            await db.Database.ExecuteSqlRawAsync(history.GetInsertScript(new HistoryRow(id, version)), ct);
-        }
     }
 }

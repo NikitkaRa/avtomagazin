@@ -42,16 +42,16 @@ public sealed class AppFlavor
     public bool AllowRegister { get; init; }
     public required IReadOnlySet<string> AllowedRoles { get; init; }
 
-    public string Client => AllowedRoles.Contains("resident") && !AllowedRoles.Contains("driver")
-        ? "resident"
-        : "staff";
+    public string Client => AllowedRoles.Contains(Roles.Resident) && !AllowedRoles.Contains(Roles.Driver)
+        ? AuthClients.Resident
+        : AuthClients.Staff;
 
     public static AppFlavor Resident { get; } = new()
     {
         Title = "Автомагазин",
         Subtitle = "",
         AllowRegister = true,
-        AllowedRoles = new HashSet<string>(StringComparer.Ordinal) { "resident" }
+        AllowedRoles = new HashSet<string>(StringComparer.Ordinal) { Roles.Resident }
     };
 
     public static AppFlavor Staff { get; } = new()
@@ -59,7 +59,10 @@ public sealed class AppFlavor
         Title = "Автомагазин",
         Subtitle = "",
         AllowRegister = true,
-        AllowedRoles = new HashSet<string>(StringComparer.Ordinal) { "driver", "seller", "operator", "admin" }
+        AllowedRoles = new HashSet<string>(StringComparer.Ordinal)
+        {
+            Roles.Driver, Roles.Seller, Roles.Operator, Roles.Admin
+        }
     };
 }
 

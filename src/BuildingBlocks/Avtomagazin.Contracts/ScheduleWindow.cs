@@ -2,7 +2,7 @@ namespace Avtomagazin.Contracts;
 
 /// <summary>
 /// On-time window for a stop: 15 minutes before planned clock time through 1 hour after.
-/// Planned dates are treated as a daily timetable (hour:minute applied to today).
+/// Planned dates are treated as a daily timetable in Europe/Minsk (hour:minute applied to today).
 /// </summary>
 public static class ScheduleWindow
 {
@@ -13,7 +13,8 @@ public static class ScheduleWindow
             return true;
         }
 
-        var today = new DateTimeOffset(now.Year, now.Month, now.Day, plannedUtc.Hour, plannedUtc.Minute, 0, TimeSpan.Zero);
+        var plannedLocal = TimeZoneInfo.ConvertTime(plannedUtc, BelarusTime.Zone);
+        var today = BelarusTime.TodayAtLocalClock(now, plannedLocal.Hour, plannedLocal.Minute);
         return Inside(today, now);
     }
 

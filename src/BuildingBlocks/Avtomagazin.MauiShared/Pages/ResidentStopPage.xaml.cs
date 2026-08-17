@@ -36,7 +36,7 @@ public partial class ResidentStopPage : ContentPage
 
         TitleLabel.Text = _stop.SettlementName;
         PlanLabel.Text = $"План {_stop.PlannedArrivalUtc.ToLocalTime():HH:mm}";
-        WindowLabel.Text = GeoMath.InReportWindow(_stop.PlannedArrivalUtc, DateTimeOffset.Now)
+        WindowLabel.Text = GeoMath.InReportWindow(_stop.PlannedArrivalUtc, DateTimeOffset.UtcNow)
             ? "Сейчас окно отметки: можно сказать «на месте» / «не приехала»."
             : "Окно отметки закрыто (за 15 мин до плана и час после).";
         var route = _snapshot.Current.Routes.FirstOrDefault(r => r.Id == _stop.RouteId);

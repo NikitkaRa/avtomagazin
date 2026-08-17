@@ -55,6 +55,18 @@ public class RoutingApiTests : IClassFixture<RoutingApiFactory>
     }
 
     [Fact]
+    public async Task Driver_cannot_arrive_at_stop_on_another_route()
+    {
+        var grodnoStop = Guid.Parse("dddddddd-dddd-dddd-dddd-ddddddddddd1");
+        using var client = TestJwt.Client(_factory, Roles.Driver, TestJwt.PukhovichiVan);
+        var response = await client.PostAsJsonAsync($"/api/stops/{grodnoStop}/arrived", new
+        {
+            vehicleId = TestJwt.PukhovichiVan
+        });
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
     public async Task Resident_forbidden_on_presence_and_coverage()
     {
         using var client = TestJwt.Client(_factory, Roles.Resident);

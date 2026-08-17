@@ -22,4 +22,12 @@ public class ScheduleWindowTests
         var today = new DateTimeOffset(2026, 8, 17, 9, 40, 0, TimeSpan.Zero);
         Assert.True(ScheduleWindow.Contains(planned, today));
     }
+
+    [Fact]
+    public void Contains_uses_minsk_clock_when_now_has_local_offset()
+    {
+        var planned = new DateTimeOffset(2026, 1, 1, 22, 0, 0, TimeSpan.Zero);
+        var now = new DateTimeOffset(2026, 8, 17, 1, 10, 0, TimeSpan.FromHours(3));
+        Assert.True(ScheduleWindow.Contains(planned, now));
+    }
 }

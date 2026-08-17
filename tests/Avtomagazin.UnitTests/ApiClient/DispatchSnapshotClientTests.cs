@@ -36,13 +36,38 @@ public class DispatchSnapshotClientTests
         Assert.Equal(4, hits.Count);
     }
 
-    private sealed class RecordingHandler(List<string> hits, Func<string, string> bodyFor) : HttpMessageHandler
+    [Fact]
+    public async Task GetSnapshotAsync_does_not_treat_failed_routes_as_empty_day()
+    {
+        var handler = new RecordingHandler([], path => path switch
+        {
+            "fleet/api/vehicles" => """[{"id":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","plateNumber":"1","operatorName":"A","isActive":true}]""",
+            "routing/api/routes" => throw new InvalidOperationException("should use status"),
+            "routing/api/driver-notes" => """[]""",
+            _ => throw new InvalidOperationException(path)
+        }, path => path == "routing/api/routes" ? HttpStatusCode.BadGateway : HttpStatusCode.OK);
+
+        using var http = new HttpClient(handler) { BaseAddress = new Uri("http://gateway.test/") };
+        var client = new AvtomagazinClient(http);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.GetSnapshotAsync());
+    }
+
+    private sealed class RecordingHandler(
+        List<string> hits,
+        Func<string, string> bodyFor,
+        Func<string, HttpStatusCode>? statusFor = null) : HttpMessageHandler
     {
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             var path = request.RequestUri!.PathAndQuery.TrimStart('/');
             hits.Add(path);
             await Task.Yield();
+            var status = statusFor?.Invoke(path) ?? HttpStatusCode.OK;
+            if (status != HttpStatusCode.OK)
+            {
+                return new HttpResponseMessage(status);
+            }
+
             return new HttpResponseMessage(HttpStatusCode.OK)
             {
                 Content = new StringContent(bodyFor(path), Encoding.UTF8, "application/json")

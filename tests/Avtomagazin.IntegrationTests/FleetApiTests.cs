@@ -81,6 +81,27 @@ public class FleetApiTests : IClassFixture<FleetApiFactory>
     }
 
     [Fact]
+    public async Task Driver_ingest_ignores_client_clock_and_source()
+    {
+        using var client = TestJwt.Client(_factory, Roles.Driver, TestJwt.PukhovichiVan);
+        var before = DateTimeOffset.UtcNow.AddMinutes(-1);
+        var response = await client.PostAsJsonAsync($"/api/vehicles/{TestJwt.PukhovichiVan}/positions", new
+        {
+            latitude = 53.51,
+            longitude = 28.25,
+            source = "gps-adapter",
+            recordedAtUtc = DateTimeOffset.UtcNow.AddHours(-6)
+        });
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+
+        var position = await client.GetFromJsonAsync<JsonElement>($"/api/vehicles/{TestJwt.PukhovichiVan}/position");
+        Assert.Equal("driver-app", position.GetProperty("source").GetString());
+        var recorded = position.GetProperty("recordedAtUtc").GetDateTimeOffset();
+        Assert.True(recorded >= before);
+        Assert.True(recorded <= DateTimeOffset.UtcNow.AddMinutes(1));
+    }
+
+    [Fact]
     public async Task Driver_cannot_create_vehicle()
     {
         using var client = TestJwt.Client(_factory, Roles.Driver, TestJwt.GrodnoVan);

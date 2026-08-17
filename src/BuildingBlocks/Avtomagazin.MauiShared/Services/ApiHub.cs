@@ -2,19 +2,17 @@ using Avtomagazin.ApiClient;
 
 namespace Avtomagazin.MauiShared;
 
-public sealed class ApiHub(Session session)
+public sealed class ApiHub
 {
-    public AvtomagazinClient Client
+    public AvtomagazinClient Client { get; }
+
+    public ApiHub(Session session)
     {
-        get
+        var http = new HttpClient
         {
-            var baseUrl = session.Gateway.TrimEnd('/') + "/";
-            var http = new HttpClient
-            {
-                BaseAddress = new Uri(baseUrl),
-                Timeout = TimeSpan.FromSeconds(12)
-            };
-            return new AvtomagazinClient(http, session);
-        }
+            BaseAddress = new Uri(session.Gateway.TrimEnd('/') + "/"),
+            Timeout = TimeSpan.FromSeconds(12)
+        };
+        Client = new AvtomagazinClient(http, session);
     }
 }

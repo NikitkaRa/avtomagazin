@@ -11,7 +11,11 @@ public partial class AppShell : Shell, IAppHost
     {
         InitializeComponent();
         _services = services;
+        _services.GetRequiredService<Session>().Unauthorized += OnUnauthorized;
     }
+
+    private void OnUnauthorized()
+        => MainThread.BeginInvokeOnMainThread(ShowLogin);
 
     public void ShowSignedIn()
     {
