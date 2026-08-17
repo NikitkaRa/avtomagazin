@@ -67,6 +67,26 @@ public class RoutingApiTests : IClassFixture<RoutingApiFactory>
     }
 
     [Fact]
+    public async Task Coverage_visit_uses_the_same_route_guard_as_arrived()
+    {
+        var grodnoStop = Guid.Parse("dddddddd-dddd-dddd-dddd-ddddddddddd1");
+        using var client = TestJwt.Client(_factory, Roles.Driver, TestJwt.PukhovichiVan);
+        var blocked = await client.PostAsJsonAsync("/api/coverage/visit", new
+        {
+            vehicleId = TestJwt.PukhovichiVan,
+            stopId = grodnoStop
+        });
+        Assert.Equal(HttpStatusCode.Forbidden, blocked.StatusCode);
+
+        var ok = await client.PostAsJsonAsync("/api/coverage/visit", new
+        {
+            vehicleId = TestJwt.PukhovichiVan,
+            stopId = TestJwt.OzerichinoStop
+        });
+        Assert.Equal(HttpStatusCode.Created, ok.StatusCode);
+    }
+
+    [Fact]
     public async Task Resident_forbidden_on_presence_and_coverage()
     {
         using var client = TestJwt.Client(_factory, Roles.Resident);

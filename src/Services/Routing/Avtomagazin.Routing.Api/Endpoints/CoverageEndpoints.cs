@@ -2,7 +2,6 @@ using System.Security.Claims;
 using Avtomagazin.Contracts;
 using Avtomagazin.Routing.Api.Data;
 using Avtomagazin.Routing.Api.Gov;
-using Avtomagazin.ServiceDefaults;
 using MassTransit;
 using Microsoft.EntityFrameworkCore;
 
@@ -22,26 +21,19 @@ public static class CoverageEndpoints
                 IPublishEndpoint bus,
                 CancellationToken ct) =>
             {
-                if (HttpAccess.ForbidVehicleWrite(principal, request.VehicleId) is { } denied)
+                var (error, visit) = await CoverageVisits.TryRecordAsync(
+                    principal,
+                    request.VehicleId,
+                    request.StopId,
+                    skipped: false,
+                    db,
+                    bus,
+                    gov,
+                    ct);
+                if (error is not null || visit is null)
                 {
-                    return denied;
+                    return error ?? Results.NotFound();
                 }
-
-                var stop = await CoverageVisits.FindStopAsync(db, request.StopId, ct);
-                if (stop is null)
-                {
-                    return Results.NotFound();
-                }
-
-                if (await CoverageVisits.ForbidStopNotOnVehicleAsync(db, stop, request.VehicleId, ct) is { } mismatch)
-                {
-                    return mismatch;
-                }
-
-                var arrivedAt = DateTimeOffset.UtcNow;
-                var visit = CoverageVisits.Create(request.VehicleId, stop, arrivedAt);
-                await CoverageVisits.SaveAsync(db, visit, ct);
-                await CoverageVisits.PublishCoverageAsync(visit, bus, gov, ct);
 
                 return Results.Created($"/api/coverage/{visit.Id}", visit.ToDto());
             })
@@ -57,31 +49,18 @@ public static class CoverageEndpoints
                 IPublishEndpoint bus,
                 CancellationToken ct) =>
             {
-                if (HttpAccess.ForbidVehicleWrite(principal, request.VehicleId) is { } denied)
+                var (error, visit) = await CoverageVisits.TryRecordAsync(
+                    principal,
+                    request.VehicleId,
+                    stopId,
+                    request.Skipped,
+                    db,
+                    bus,
+                    gov,
+                    ct);
+                if (error is not null || visit is null)
                 {
-                    return denied;
-                }
-
-                var stop = await CoverageVisits.FindStopAsync(db, stopId, ct);
-                if (stop is null)
-                {
-                    return Results.NotFound();
-                }
-
-                if (await CoverageVisits.ForbidStopNotOnVehicleAsync(db, stop, request.VehicleId, ct) is { } mismatch)
-                {
-                    return mismatch;
-                }
-
-                var arrivedAt = DateTimeOffset.UtcNow;
-                var skipped = request.Skipped;
-                var visit = CoverageVisits.Create(request.VehicleId, stop, arrivedAt, skipped);
-                await CoverageVisits.SaveAsync(db, visit, ct);
-
-                if (!skipped)
-                {
-                    await CoverageVisits.PublishCoverageAsync(visit, bus, gov, ct);
-                    await CoverageVisits.PublishDriverArrivalAsync(request.VehicleId, stop, arrivedAt, bus, ct);
+                    return error ?? Results.NotFound();
                 }
 
                 return Results.Ok(visit.ToDto());

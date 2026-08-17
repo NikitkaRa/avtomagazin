@@ -89,7 +89,7 @@
 
         try
         {
-            await Api.RecordCoverageAsync(new CoverageVisitRequest(_vehicleId, _stopId, null));
+            await Api.ArriveAtStopAsync(_stopId, _vehicleId);
             _coverage = await Api.GetCoverageAsync();
             _error = null;
         }

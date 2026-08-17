@@ -88,10 +88,10 @@ public class SeedTests
         const double lat = 53.5774;
         const double lng = 27.7472;
         var nearest = db.Stops.AsEnumerable()
-            .OrderBy(s => Avtomagazin.Routing.Api.NextStop.DistanceKm(lat, lng, s.Latitude, s.Longitude))
+            .OrderBy(s => GeoMath.DistanceKm(lat, lng, s.Latitude, s.Longitude))
             .First();
 
         Assert.Equal("Озеричино", nearest.SettlementName);
-        Assert.True(Avtomagazin.Routing.Api.NextStop.DistanceKm(lat, lng, nearest.Latitude, nearest.Longitude) < 0.05);
+        Assert.True(GeoMath.DistanceKm(lat, lng, nearest.Latitude, nearest.Longitude) < 0.05);
     }
 }

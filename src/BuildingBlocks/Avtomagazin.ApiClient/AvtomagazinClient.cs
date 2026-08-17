@@ -349,11 +349,8 @@ public sealed class AvtomagazinClient(HttpClient http, IAccessTokenAccessor? tok
         return GetListAsync<CoverageDto>(path, ct);
     }
 
-    public async Task RecordCoverageAsync(CoverageVisitRequest request, CancellationToken ct = default)
-    {
-        using var response = await SendJsonAsync(HttpMethod.Post, "routing/api/coverage/visit", request, ct);
-        await EnsureSuccessAsync(response, ct);
-    }
+    public Task RecordCoverageAsync(CoverageVisitRequest request, CancellationToken ct = default)
+        => ArriveAtStopAsync(request.StopId, request.VehicleId, skipped: false, ct);
 
     public async Task ArriveAtStopAsync(Guid stopId, Guid vehicleId, bool skipped = false, CancellationToken ct = default)
     {

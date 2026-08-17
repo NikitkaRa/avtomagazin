@@ -1,7 +1,9 @@
+using System.Security.Claims;
 using Avtomagazin.Contracts;
 using Avtomagazin.Contracts.Events;
 using Avtomagazin.Routing.Api.Data;
 using Avtomagazin.Routing.Api.Gov;
+using Avtomagazin.ServiceDefaults;
 using MassTransit;
 using Microsoft.EntityFrameworkCore;
 
@@ -9,6 +11,45 @@ namespace Avtomagazin.Routing.Api;
 
 internal static class CoverageVisits
 {
+    public static async Task<(IResult? Error, CoverageVisit? Visit)> TryRecordAsync(
+        ClaimsPrincipal principal,
+        Guid vehicleId,
+        Guid stopId,
+        bool skipped,
+        RoutingDbContext db,
+        IPublishEndpoint bus,
+        IGovIntegration gov,
+        CancellationToken ct = default)
+    {
+        if (HttpAccess.ForbidVehicleWrite(principal, vehicleId) is { } denied)
+        {
+            return (denied, null);
+        }
+
+        var stop = await FindStopAsync(db, stopId, ct);
+        if (stop is null)
+        {
+            return (Results.NotFound(), null);
+        }
+
+        if (await ForbidStopNotOnVehicleAsync(db, stop, vehicleId, ct) is { } mismatch)
+        {
+            return (mismatch, null);
+        }
+
+        var arrivedAt = DateTimeOffset.UtcNow;
+        var visit = Create(vehicleId, stop, arrivedAt, skipped);
+        await SaveAsync(db, visit, ct);
+
+        if (!skipped)
+        {
+            await PublishCoverageAsync(visit, bus, gov, ct);
+            await PublishDriverArrivalAsync(vehicleId, stop, arrivedAt, bus, ct);
+        }
+
+        return (null, visit);
+    }
+
     public static CoverageVisit Create(
         Guid vehicleId,
         RouteStop stop,
