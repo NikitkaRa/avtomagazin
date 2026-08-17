@@ -59,3 +59,12 @@ public sealed record PositionIngestRequest(
     double? SpeedKmh,
     DateTimeOffset? RecordedAtUtc,
     string? Source);
+
+public sealed record VehiclePositionDto(
+    Guid Id,
+    Guid VehicleId,
+    double Latitude,
+    double Longitude,
+    double? SpeedKmh,
+    DateTimeOffset RecordedAtUtc,
+    string Source);

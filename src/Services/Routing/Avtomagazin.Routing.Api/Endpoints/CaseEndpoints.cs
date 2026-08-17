@@ -29,20 +29,8 @@ public static class CaseEndpoints
                 var items = await query
                     .OrderByDescending(c => c.UpdatedAtUtc)
                     .Take(100)
-                    .Select(c => new
-                    {
-                        c.Id,
-                        c.SettlementKey,
-                        c.SettlementName,
-                        c.VehicleId,
-                        c.Status,
-                        c.ReportCount,
-                        c.OpenedAtUtc,
-                        c.UpdatedAtUtc,
-                        c.ClosedAtUtc
-                    })
                     .ToListAsync();
-                return Results.Ok(items);
+                return Results.Ok(items.Select(c => c.ToSummary()));
             })
             .RequireAuthorization(policy => policy.RequireRole(Roles.Driver, Roles.Seller, Roles.Operator, Roles.Admin))
             .WithName("ListCases");
@@ -52,7 +40,7 @@ public static class CaseEndpoints
                 var item = await db.Cases.AsNoTracking()
                     .Include(c => c.Events.OrderByDescending(e => e.CreatedAtUtc))
                     .FirstOrDefaultAsync(c => c.Id == id);
-                return item is null ? Results.NotFound() : Results.Ok(item);
+                return item is null ? Results.NotFound() : Results.Ok(item.ToDetail());
             })
             .RequireAuthorization(policy => policy.RequireRole(Roles.Driver, Roles.Seller, Roles.Operator, Roles.Admin))
             .WithName("GetCase");
@@ -88,7 +76,7 @@ public static class CaseEndpoints
                 });
                 item.UpdatedAtUtc = now;
                 await db.SaveChangesAsync();
-                return Results.Ok(await CaseWorkflow.LoadAsync(db, item.Id));
+                return Results.Ok((await CaseWorkflow.LoadAsync(db, item.Id))?.ToDetail());
             })
             .RequireAuthorization(policy => policy.RequireRole(Roles.Operator, Roles.Admin))
             .WithName("AddCaseComment");
@@ -113,7 +101,7 @@ public static class CaseEndpoints
 
                 if (item.Status == status && string.IsNullOrWhiteSpace(request.Comment))
                 {
-                    return Results.Ok(await CaseWorkflow.LoadAsync(db, item.Id));
+                    return Results.Ok((await CaseWorkflow.LoadAsync(db, item.Id))?.ToDetail());
                 }
 
                 var now = DateTimeOffset.UtcNow;
@@ -147,7 +135,7 @@ public static class CaseEndpoints
                 });
 
                 await db.SaveChangesAsync();
-                return Results.Ok(await CaseWorkflow.LoadAsync(db, item.Id));
+                return Results.Ok((await CaseWorkflow.LoadAsync(db, item.Id))?.ToDetail());
             })
             .RequireAuthorization(policy => policy.RequireRole(Roles.Operator, Roles.Admin))
             .WithName("SetCaseStatus");

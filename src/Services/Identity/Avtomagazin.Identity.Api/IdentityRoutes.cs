@@ -138,16 +138,7 @@ internal static class IdentityRoutes
 
         if (status == UserStatuses.Pending)
         {
-            return Results.Created($"/api/users/{user.Id}", new
-            {
-                accessToken = (string?)null,
-                role = user.Role,
-                userId = user.Id,
-                email = user.Email,
-                name = user.DisplayName,
-                vehicleId = user.VehicleId,
-                status = user.Status
-            });
+            return Results.Created($"/api/users/{user.Id}", IdentityMaps.ToLogin(user, accessToken: null));
         }
 
         return Results.Ok(AuthTokens.Payload(user, config, env));
@@ -224,7 +215,7 @@ internal static class IdentityRoutes
             return Results.Unauthorized();
         }
 
-        return Results.Ok(ProfilePayload(user));
+        return Results.Ok(IdentityMaps.ToProfile(user));
     }
 
     private static async Task<IResult> UpdateProfileAsync(
@@ -294,24 +285,8 @@ internal static class IdentityRoutes
 
         await db.SaveChangesAsync();
         await bus.Publish(new StaffContactChanged(user.Id, user.DisplayName, user.Phone));
-        return Results.Ok(ProfilePayload(user));
+        return Results.Ok(IdentityMaps.ToProfile(user));
     }
-
-    private static object ProfilePayload(AppUser user) => new
-    {
-        id = user.Id,
-        email = user.Email,
-        role = user.Role,
-        name = user.DisplayName,
-        displayName = user.DisplayName,
-        lastName = user.LastName,
-        firstName = user.FirstName,
-        middleName = user.MiddleName,
-        phone = user.Phone,
-        photoUrl = user.PhotoUrl,
-        vehicleId = user.VehicleId,
-        status = user.Status
-    };
 
     private static string? TrimOrNull(string? value)
         => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
@@ -347,21 +322,9 @@ internal static class IdentityRoutes
         var items = await query
             .OrderBy(u => u.Status == UserStatuses.Pending ? 0 : 1)
             .ThenBy(u => u.DisplayName)
-            .Select(u => new
-            {
-                u.Id,
-                u.Email,
-                u.DisplayName,
-                u.Role,
-                roleTitle = Roles.Title(u.Role),
-                u.Status,
-                u.VehicleId,
-                u.CreatedAtUtc,
-                u.ApprovedAtUtc
-            })
             .ToListAsync();
 
-        return Results.Ok(items);
+        return Results.Ok(items.Select(IdentityMaps.ToAccount));
     }
 
     private static async Task<IResult> ListStaffAsync(IdentityDbContext db)
@@ -373,19 +336,9 @@ internal static class IdentityRoutes
                             || u.Role == Roles.Operator
                             || u.Role == Roles.Admin))
             .OrderBy(u => u.DisplayName)
-            .Select(u => new
-            {
-                u.Id,
-                u.Email,
-                u.DisplayName,
-                u.Role,
-                roleTitle = Roles.Title(u.Role),
-                u.Status,
-                u.VehicleId
-            })
             .ToListAsync();
 
-        return Results.Ok(items);
+        return Results.Ok(items.Select(IdentityMaps.ToStaff));
     }
 
     private static async Task<IResult> AssignVehicleAsync(
@@ -430,16 +383,7 @@ internal static class IdentityRoutes
         user.VehicleId = vehicleId;
         user.TokenVersion++;
         await db.SaveChangesAsync();
-        return Results.Ok(new
-        {
-            user.Id,
-            user.Email,
-            user.DisplayName,
-            user.Role,
-            roleTitle = Roles.Title(user.Role),
-            user.Status,
-            user.VehicleId
-        });
+        return Results.Ok(IdentityMaps.ToStaff(user));
     }
 
     private static async Task<IResult> ApproveAsync(
@@ -484,16 +428,7 @@ internal static class IdentityRoutes
         }
 
         await db.SaveChangesAsync();
-        return Results.Ok(new
-        {
-            user.Id,
-            user.Email,
-            user.DisplayName,
-            user.Role,
-            roleTitle = Roles.Title(user.Role),
-            user.Status,
-            user.VehicleId
-        });
+        return Results.Ok(IdentityMaps.ToAccount(user));
     }
 
     private static async Task<IResult> RejectAsync(Guid id, IdentityDbContext db)
@@ -530,7 +465,7 @@ internal static class IdentityRoutes
         user.Status = UserStatuses.Disabled;
         user.TokenVersion++;
         await db.SaveChangesAsync();
-        return Results.Ok(new { user.Id, user.Status });
+        return Results.Ok(IdentityMaps.ToStatus(user));
     }
 
     private static async Task<IResult> ChangePasswordAsync(
@@ -596,7 +531,7 @@ internal static class IdentityRoutes
         user.FailedLoginCount = 0;
         user.LockoutEndUtc = null;
         await db.SaveChangesAsync();
-        return Results.Ok(new { user.Id, user.Status });
+        return Results.Ok(IdentityMaps.ToStatus(user));
     }
 
     private static string? NormalizeEmail(string? email)

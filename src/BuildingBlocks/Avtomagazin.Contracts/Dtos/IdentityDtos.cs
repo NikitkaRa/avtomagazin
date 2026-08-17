@@ -68,3 +68,5 @@ public sealed record ApproveUserRequest(string? Role, Guid? VehicleId);
 public sealed record ChangePasswordRequest(string Current, string Next);
 
 public sealed record SetPasswordRequest(string Password);
+
+public sealed record UserStatusDto(Guid Id, string Status);

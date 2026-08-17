@@ -21,7 +21,7 @@ public static class DriverNoteEndpoints
                     .Where(n => n.CreatedAtUtc >= cutoff)
                     .OrderByDescending(n => n.CreatedAtUtc)
                     .ToListAsync();
-                return Results.Ok(items);
+                return Results.Ok(items.Select(n => n.ToDto()));
             })
             .RequireAuthorization()
             .WithName("ListDriverNotes");
@@ -85,7 +85,7 @@ public static class DriverNoteEndpoints
                     note.Longitude,
                     note.CreatedAtUtc));
 
-                return Results.Ok(note);
+                return Results.Ok(note.ToDto());
             })
             .RequireAuthorization(policy => policy.RequireRole(Roles.Driver, Roles.Seller, Roles.Operator, Roles.Admin))
             .WithName("PostDriverNote");

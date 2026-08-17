@@ -1,5 +1,12 @@
 namespace Avtomagazin.Contracts;
 
+public sealed record DeviceDto(
+    Guid Id,
+    Guid? UserId,
+    string DeviceToken,
+    string Platform,
+    string SettlementName);
+
 public sealed record FavoriteDto(Guid StopId, string SettlementName, DateTimeOffset CreatedAtUtc);
 
 public sealed record FavoriteStatsDto(Guid StopId, string SettlementName, int SubscriberCount);

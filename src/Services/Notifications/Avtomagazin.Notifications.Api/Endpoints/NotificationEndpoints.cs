@@ -29,14 +29,7 @@ public static class NotificationEndpoints
                     request.SettlementName,
                     userId);
                 await db.SaveChangesAsync();
-                return Results.Ok(new
-                {
-                    device.Id,
-                    device.DeviceToken,
-                    device.Platform,
-                    device.SettlementName,
-                    device.UserId
-                });
+                return Results.Ok(device.ToDto());
             })
             .RequireAuthorization()
             .WithName("RegisterDevice");
@@ -87,14 +80,7 @@ public static class NotificationEndpoints
                 }
 
                 await db.SaveChangesAsync();
-                return Results.Ok(new
-                {
-                    existing.Id,
-                    existing.StopId,
-                    existing.SettlementName,
-                    existing.UserId,
-                    deviceToken = device.DeviceToken
-                });
+                return Results.Ok(existing.ToDto());
             })
             .RequireAuthorization()
             .WithName("AddFavorite");
@@ -137,10 +123,9 @@ public static class NotificationEndpoints
                     .AsNoTracking()
                     .Where(f => f.UserId == userId)
                     .OrderBy(f => f.SettlementName)
-                    .Select(f => new { f.StopId, f.SettlementName, f.CreatedAtUtc })
                     .ToListAsync();
 
-                return Results.Ok(items);
+                return Results.Ok(items.Select(f => f.ToDto()));
             })
             .RequireAuthorization()
             .WithName("ListFavorites");
@@ -155,13 +140,13 @@ public static class NotificationEndpoints
                     {
                         g.Key.StopId,
                         g.Key.SettlementName,
-                        subscriberCount = g.Count()
+                        Count = g.Count()
                     })
-                    .OrderByDescending(x => x.subscriberCount)
+                    .OrderByDescending(x => x.Count)
                     .ThenBy(x => x.SettlementName)
                     .ToListAsync();
 
-                return Results.Ok(items);
+                return Results.Ok(items.Select(x => new FavoriteStatsDto(x.StopId, x.SettlementName, x.Count)));
             })
             .RequireAuthorization(policy => policy.RequireRole(Roles.Operator, Roles.Admin, Roles.Driver))
             .WithName("FavoriteStats");
@@ -174,7 +159,8 @@ public static class NotificationEndpoints
                     query = query.Where(n => n.SettlementName == settlement);
                 }
 
-                return Results.Ok(await query.OrderByDescending(n => n.SentAtUtc).Take(100).ToListAsync());
+                return Results.Ok((await query.OrderByDescending(n => n.SentAtUtc).Take(100).ToListAsync())
+                    .Select(n => n.ToDto()));
             })
             .RequireAuthorization(policy => policy.RequireRole(Roles.Operator, Roles.Admin, Roles.Driver))
             .WithName("ListNotifications");

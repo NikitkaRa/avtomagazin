@@ -23,7 +23,7 @@ public static class RouteEndpoints
                 var route = await db.Routes.AsNoTracking()
                     .Include(r => r.Stops.OrderBy(s => s.Sequence))
                     .FirstOrDefaultAsync(r => r.Id == routeId);
-                return route is null ? Results.NotFound() : Results.Ok(route);
+                return route is null ? Results.NotFound() : Results.Ok(route.ToDto());
             })
             .RequireAuthorization()
             .WithName("GetRoute");
@@ -34,7 +34,7 @@ public static class RouteEndpoints
                     .Where(s => s.SettlementName.Contains(settlement))
                     .OrderBy(s => s.PlannedArrivalUtc)
                     .ToListAsync();
-                return Results.Ok(stops);
+                return Results.Ok(stops.Select(s => s.ToDto()));
             })
             .RequireAuthorization()
             .WithName("FindStops");
@@ -55,13 +55,7 @@ public static class RouteEndpoints
 
                 db.Routes.Add(route);
                 await db.SaveChangesAsync();
-                return Results.Created($"/api/routes/{route.Id}", new
-                {
-                    route.Id,
-                    route.Name,
-                    route.VehicleId,
-                    Stops = Array.Empty<object>()
-                });
+                return Results.Created($"/api/routes/{route.Id}", route.ToDto());
             })
             .RequireAuthorization(policy => policy.RequireRole(Roles.Operator, Roles.Admin))
             .WithName("CreateRoute");
@@ -85,9 +79,10 @@ public static class RouteEndpoints
                 }
 
                 await db.SaveChangesAsync();
-                return Results.Ok(await db.Routes.AsNoTracking()
+                var mapped = await db.Routes.AsNoTracking()
                     .Include(r => r.Stops.OrderBy(s => s.Sequence))
-                    .FirstAsync(r => r.Id == routeId));
+                    .FirstAsync(r => r.Id == routeId);
+                return Results.Ok(mapped.ToDto());
             })
             .RequireAuthorization(policy => policy.RequireRole(Roles.Operator, Roles.Admin))
             .WithName("UpdateRoute");
@@ -185,9 +180,10 @@ public static class RouteEndpoints
                 }
 
                 await db.SaveChangesAsync();
-                return Results.Ok(await db.Routes.AsNoTracking()
+                var mapped = await db.Routes.AsNoTracking()
                     .Include(r => r.Stops.OrderBy(s => s.Sequence))
-                    .FirstAsync(r => r.Id == routeId));
+                    .FirstAsync(r => r.Id == routeId);
+                return Results.Ok(mapped.ToDto());
             })
             .RequireAuthorization(policy => policy.RequireRole(Roles.Operator, Roles.Admin))
             .WithName("ReplaceRouteStops");
@@ -217,7 +213,7 @@ public static class RouteEndpoints
 
                 db.Stops.Add(stop);
                 await db.SaveChangesAsync();
-                return Results.Created($"/api/stops/{stop.SettlementName}", stop);
+                return Results.Created($"/api/stops/{stop.SettlementName}", stop.ToDto());
             })
             .RequireAuthorization(policy => policy.RequireRole(Roles.Operator, Roles.Admin))
             .WithName("AddStop");
@@ -260,7 +256,7 @@ public static class RouteEndpoints
                     stop.PlannedArrivalUtc,
                     request.Reason));
 
-                return Results.Ok(stop);
+                return Results.Ok(stop.ToDto());
             })
             .RequireAuthorization(policy => policy.RequireRole(Roles.Operator, Roles.Admin))
             .WithName("ChangeSchedule");
@@ -312,31 +308,17 @@ public static class RouteEndpoints
                 }
 
                 await db.SaveChangesAsync();
-                return Results.Created($"/api/stops/{stop.Id}/reports/{report.Id}", new
-                {
-                    report.Id,
-                    report.StopId,
-                    report.SettlementName,
-                    report.Kind,
-                    report.ReportedAtUtc
-                });
+                return Results.Created($"/api/stops/{stop.Id}/reports/{report.Id}", report.ToDto());
             })
             .RequireAuthorization()
             .WithName("ReportStopPresence");
 
         group.MapGet("/presence-reports", async (RoutingDbContext db) =>
-                await db.PresenceReports.AsNoTracking()
+                (await db.PresenceReports.AsNoTracking()
                     .OrderByDescending(r => r.ReportedAtUtc)
                     .Take(100)
-                    .Select(r => new
-                    {
-                        r.Id,
-                        r.StopId,
-                        r.SettlementName,
-                        r.Kind,
-                        r.ReportedAtUtc
-                    })
                     .ToListAsync())
+                    .Select(r => r.ToDto()))
             .RequireAuthorization(policy => policy.RequireRole(Roles.Driver, Roles.Seller, Roles.Operator, Roles.Admin))
             .WithName("ListPresenceReports");
 

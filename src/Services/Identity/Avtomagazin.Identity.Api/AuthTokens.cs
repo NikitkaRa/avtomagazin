@@ -10,7 +10,7 @@ namespace Avtomagazin.Identity.Api;
 
 internal static class AuthTokens
 {
-    public static object Payload(AppUser user, IConfiguration config, IHostEnvironment env)
+    public static LoginResponse Payload(AppUser user, IConfiguration config, IHostEnvironment env)
     {
         var key = DeploySecrets.JwtKey(config, env);
         var credentials = new SigningCredentials(
@@ -40,15 +40,6 @@ internal static class AuthTokens
             expires: DateTime.UtcNow.AddHours(12),
             signingCredentials: credentials);
 
-        return new
-        {
-            accessToken = new JwtSecurityTokenHandler().WriteToken(token),
-            role = user.Role,
-            userId = user.Id,
-            email = user.Email,
-            name = user.DisplayName,
-            vehicleId = user.VehicleId,
-            status = user.Status
-        };
+        return IdentityMaps.ToLogin(user, new JwtSecurityTokenHandler().WriteToken(token));
     }
 }

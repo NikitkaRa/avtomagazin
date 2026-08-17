@@ -83,7 +83,8 @@ public sealed record CoverageDto(
     string SettlementName,
     string RegionCode,
     DateTimeOffset ArrivedAtUtc,
-    bool WithinScheduledWindow);
+    bool WithinScheduledWindow,
+    bool Skipped = false);
 
 public sealed record CoverageVisitRequest(
     Guid VehicleId,

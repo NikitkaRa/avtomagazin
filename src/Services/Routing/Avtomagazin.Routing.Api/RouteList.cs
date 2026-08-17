@@ -85,32 +85,6 @@ public static class RouteList
             }
         }
 
-        return routes.Select(r => new RouteDto(
-            r.Id,
-            r.Name,
-            r.VehicleId,
-            r.Stops.Select(s => visits.TryGetValue(s.Id, out var visit)
-                ? new RouteStopDto(
-                    s.Id,
-                    s.RouteId,
-                    s.Sequence,
-                    s.SettlementName,
-                    s.RegionCode,
-                    s.Latitude,
-                    s.Longitude,
-                    s.PlannedArrivalUtc,
-                    s.PhotoDataUrl,
-                    visit.At,
-                    visit.Skipped)
-                : new RouteStopDto(
-                    s.Id,
-                    s.RouteId,
-                    s.Sequence,
-                    s.SettlementName,
-                    s.RegionCode,
-                    s.Latitude,
-                    s.Longitude,
-                    s.PlannedArrivalUtc,
-                    s.PhotoDataUrl)).ToList())).ToList();
+        return routes.Select(r => r.ToDto(visits)).ToList();
     }
 }

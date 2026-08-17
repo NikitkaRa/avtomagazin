@@ -38,7 +38,7 @@ public static class CoverageEndpoints
                 await CoverageVisits.SaveAsync(db, visit, ct);
                 await CoverageVisits.PublishCoverageAsync(visit, bus, gov, ct);
 
-                return Results.Created($"/api/coverage/{visit.Id}", visit);
+                return Results.Created($"/api/coverage/{visit.Id}", visit.ToDto());
             })
             .RequireAuthorization(policy => policy.RequireRole(Roles.Driver, Roles.Seller, Roles.Operator, Roles.Admin))
             .WithName("RecordCoverageVisit");
@@ -74,14 +74,7 @@ public static class CoverageEndpoints
                     await CoverageVisits.PublishDriverArrivalAsync(request.VehicleId, stop, arrivedAt, bus, ct);
                 }
 
-                return Results.Ok(new
-                {
-                    visit.Id,
-                    stop.SettlementName,
-                    arrivedAt,
-                    withinScheduledWindow = visit.WithinScheduledWindow,
-                    skipped
-                });
+                return Results.Ok(visit.ToDto());
             })
             .RequireAuthorization(policy => policy.RequireRole(Roles.Driver, Roles.Seller, Roles.Operator, Roles.Admin))
             .WithName("DriverArrivedAtStop");
@@ -94,7 +87,8 @@ public static class CoverageEndpoints
                     query = query.Where(v => v.RegionCode == regionCode);
                 }
 
-                return Results.Ok(await query.OrderByDescending(v => v.ArrivedAtUtc).Take(100).ToListAsync());
+                return Results.Ok((await query.OrderByDescending(v => v.ArrivedAtUtc).Take(100).ToListAsync())
+                    .Select(v => v.ToDto()));
             })
             .RequireAuthorization(policy => policy.RequireRole(Roles.Driver, Roles.Seller, Roles.Operator, Roles.Admin))
             .WithName("ListCoverage");

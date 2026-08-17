@@ -15,14 +15,15 @@ public static class VehicleEndpoints
         var group = app.MapGroup("/api").WithTags("Fleet");
 
         group.MapGet("/vehicles", async (FleetDbContext db) =>
-                await db.Vehicles.AsNoTracking().OrderBy(v => v.PlateNumber).ToListAsync())
+                (await db.Vehicles.AsNoTracking().OrderBy(v => v.PlateNumber).ToListAsync())
+                    .Select(v => v.ToDto()))
             .RequireAuthorization()
             .WithName("ListVehicles");
 
         group.MapGet("/vehicles/{id:guid}", async (Guid id, FleetDbContext db) =>
             {
                 var vehicle = await db.Vehicles.AsNoTracking().FirstOrDefaultAsync(v => v.Id == id);
-                return vehicle is null ? Results.NotFound() : Results.Ok(vehicle);
+                return vehicle is null ? Results.NotFound() : Results.Ok(vehicle.ToDto());
             })
             .RequireAuthorization()
             .WithName("GetVehicle");
@@ -33,7 +34,7 @@ public static class VehicleEndpoints
                     .Where(p => p.VehicleId == id)
                     .OrderByDescending(p => p.RecordedAtUtc)
                     .FirstOrDefaultAsync();
-                return position is null ? Results.NotFound() : Results.Ok(position);
+                return position is null ? Results.NotFound() : Results.Ok(position.ToDto());
             })
             .RequireAuthorization()
             .WithName("GetVehiclePosition");
@@ -79,7 +80,7 @@ public static class VehicleEndpoints
 
                 db.Vehicles.Add(vehicle);
                 await db.SaveChangesAsync();
-                return Results.Created($"/api/vehicles/{vehicle.Id}", vehicle);
+                return Results.Created($"/api/vehicles/{vehicle.Id}", vehicle.ToDto());
             })
             .RequireAuthorization(policy => policy.RequireRole(Roles.Operator, Roles.Admin))
             .WithName("CreateVehicle");
@@ -133,7 +134,7 @@ public static class VehicleEndpoints
                 }
 
                 await db.SaveChangesAsync();
-                return Results.Ok(vehicle);
+                return Results.Ok(vehicle.ToDto());
             })
             .RequireAuthorization(policy => policy.RequireRole(Roles.Operator, Roles.Admin))
             .WithName("UpdateVehicle");
@@ -148,7 +149,7 @@ public static class VehicleEndpoints
 
                 vehicle.IsActive = request.IsActive;
                 await db.SaveChangesAsync();
-                return Results.Ok(vehicle);
+                return Results.Ok(vehicle.ToDto());
             })
             .RequireAuthorization(policy => policy.RequireRole(Roles.Operator, Roles.Admin))
             .WithName("SetVehicleActive");
@@ -199,7 +200,7 @@ public static class VehicleEndpoints
                     position.SpeedKmh,
                     position.RecordedAtUtc));
 
-                return Results.Created($"/api/vehicles/{id}/position", position);
+                return Results.Created($"/api/vehicles/{id}/position", position.ToDto());
             })
             .RequireAuthorization(policy => policy.RequireRole(Roles.Driver, Roles.Seller, Roles.Operator, Roles.Admin))
             .WithName("IngestPosition");
@@ -226,7 +227,7 @@ public static class VehicleEndpoints
 
                 vehicle.OperatorPhone = VehiclePhotos.TrimOrNull(request.OperatorPhone);
                 await db.SaveChangesAsync();
-                return Results.Ok(vehicle);
+                return Results.Ok(vehicle.ToDto());
             })
             .RequireAuthorization(policy => policy.RequireRole(Roles.Operator, Roles.Admin))
             .WithName("UpdateVehicleContacts");
