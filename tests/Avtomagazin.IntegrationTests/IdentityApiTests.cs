@@ -455,6 +455,70 @@ public class IdentityApiTests : IClassFixture<IdentityApiFactory>
     }
 
     [Fact]
+    public async Task Disable_driver_clears_vehicle()
+    {
+        var van = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+        var driverId = await RegisterApproveDriverAsync($"drv-off-{Guid.NewGuid():N}@demo.by", van);
+
+        using var admin = await AuthedAsync("admin@demo.by");
+        Assert.Equal(HttpStatusCode.OK, (await admin.PostAsJsonAsync($"/api/users/{driverId}/disable", new { })).StatusCode);
+
+        var users = await admin.GetFromJsonAsync<JsonElement>("/api/users");
+        Guid? assigned = Guid.Empty;
+        foreach (var u in users.EnumerateArray())
+        {
+            if (u.GetProperty("id").GetGuid() == driverId)
+            {
+                assigned = u.GetProperty("vehicleId").ValueKind == JsonValueKind.Null
+                    ? null
+                    : u.GetProperty("vehicleId").GetGuid();
+            }
+        }
+
+        Assert.Null(assigned);
+    }
+
+    [Fact]
+    public async Task Approve_driver_clears_previous_on_same_van()
+    {
+        var van = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+        var first = await RegisterApproveDriverAsync($"drv-ap1-{Guid.NewGuid():N}@demo.by", van);
+        var email = $"drv-ap2-{Guid.NewGuid():N}@demo.by";
+        var register = await _client.PostAsJsonAsync("/api/auth/register", new
+        {
+            email,
+            password = "secret12",
+            name = "Driver",
+            client = "staff",
+            staffRole = "driver"
+        });
+        register.EnsureSuccessStatusCode();
+        using var created = JsonDocument.Parse(await register.Content.ReadAsStringAsync());
+        var second = created.RootElement.GetProperty("userId").GetGuid();
+
+        using var admin = await AuthedAsync("admin@demo.by");
+        Assert.Equal(HttpStatusCode.OK, (await admin.PostAsJsonAsync($"/api/users/{second}/approve", new
+        {
+            role = "driver",
+            vehicleId = van
+        })).StatusCode);
+
+        var users = await admin.GetFromJsonAsync<JsonElement>("/api/users");
+        Guid? firstVan = Guid.Empty;
+        foreach (var u in users.EnumerateArray())
+        {
+            if (u.GetProperty("id").GetGuid() == first)
+            {
+                firstVan = u.GetProperty("vehicleId").ValueKind == JsonValueKind.Null
+                    ? null
+                    : u.GetProperty("vehicleId").GetGuid();
+            }
+        }
+
+        Assert.Null(firstVan);
+    }
+
+    [Fact]
     public async Task Assign_vehicle_rejects_operator_and_pending()
     {
         using var admin = await AuthedAsync("admin@demo.by");

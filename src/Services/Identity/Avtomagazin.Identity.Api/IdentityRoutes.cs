@@ -364,28 +364,11 @@ internal static class IdentityRoutes
         }
 
         var vehicleId = request?.VehicleId is Guid van && van != Guid.Empty ? van : (Guid?)null;
-        var bumped = new List<AppUser>();
-        if (vehicleId is Guid assigned)
-        {
-            var previous = await db.Users
-                .Where(u => u.VehicleId == assigned && u.Id != id && u.Role == user.Role)
-                .ToListAsync();
-            foreach (var other in previous)
-            {
-                other.VehicleId = null;
-                other.TokenVersion++;
-                bumped.Add(other);
-            }
-        }
-
+        var bumped = await VacateSameSeatAsync(db, id, user.Role, vehicleId);
         user.VehicleId = vehicleId;
         user.TokenVersion++;
         await db.SaveChangesAsync();
-        await NotifyVehicleAsync(bus, user);
-        foreach (var other in bumped)
-        {
-            await NotifyVehicleAsync(bus, other);
-        }
+        await PublishVehicleChangesAsync(bus, user, bumped);
 
         return Results.Ok(IdentityMaps.ToStaff(user));
     }
@@ -432,10 +415,11 @@ internal static class IdentityRoutes
             user.TokenVersion++;
         }
 
+        var bumped = await VacateSameSeatAsync(db, id, user.Role, user.VehicleId);
         await db.SaveChangesAsync();
         if (Roles.IsVanCrew(user.Role))
         {
-            await NotifyVehicleAsync(bus, user);
+            await PublishVehicleChangesAsync(bus, user, bumped);
         }
 
         return Results.Ok(IdentityMaps.ToAccount(user));
@@ -448,6 +432,43 @@ internal static class IdentityRoutes
             user.VehicleId,
             user.DisplayName,
             user.Phone));
+
+    private static async Task PublishVehicleChangesAsync(
+        IPublishEndpoint bus,
+        AppUser user,
+        IReadOnlyList<AppUser> bumped)
+    {
+        await NotifyVehicleAsync(bus, user);
+        foreach (var other in bumped)
+        {
+            await NotifyVehicleAsync(bus, other);
+        }
+    }
+
+    private static async Task<List<AppUser>> VacateSameSeatAsync(
+        IdentityDbContext db,
+        Guid userId,
+        string role,
+        Guid? vehicleId)
+    {
+        var bumped = new List<AppUser>();
+        if (vehicleId is not Guid assigned || !Roles.IsVanCrew(role))
+        {
+            return bumped;
+        }
+
+        var previous = await db.Users
+            .Where(u => u.VehicleId == assigned && u.Id != userId && u.Role == role)
+            .ToListAsync();
+        foreach (var other in previous)
+        {
+            other.VehicleId = null;
+            other.TokenVersion++;
+            bumped.Add(other);
+        }
+
+        return bumped;
+    }
 
     private static async Task<IResult> RejectAsync(Guid id, IdentityDbContext db)
     {
@@ -467,7 +488,7 @@ internal static class IdentityRoutes
         return Results.NoContent();
     }
 
-    private static async Task<IResult> DisableAsync(Guid id, IdentityDbContext db)
+    private static async Task<IResult> DisableAsync(Guid id, IdentityDbContext db, IPublishEndpoint bus)
     {
         var user = await db.Users.FirstOrDefaultAsync(u => u.Id == id);
         if (user is null)
@@ -482,7 +503,13 @@ internal static class IdentityRoutes
 
         user.Status = UserStatuses.Disabled;
         user.TokenVersion++;
+        user.VehicleId = null;
         await db.SaveChangesAsync();
+        if (Roles.IsVanCrew(user.Role))
+        {
+            await NotifyVehicleAsync(bus, user);
+        }
+
         return Results.Ok(IdentityMaps.ToStatus(user));
     }
 
