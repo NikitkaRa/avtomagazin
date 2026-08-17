@@ -37,28 +37,9 @@ public static class ServiceDay
     }
 }
 
-public sealed record RouteListStop(
-    Guid Id,
-    Guid RouteId,
-    int Sequence,
-    string SettlementName,
-    string RegionCode,
-    double Latitude,
-    double Longitude,
-    DateTimeOffset PlannedArrivalUtc,
-    string? PhotoDataUrl,
-    DateTimeOffset? ArrivedAtUtc,
-    bool Skipped = false);
-
-public sealed record RouteListItem(
-    Guid Id,
-    string Name,
-    Guid VehicleId,
-    List<RouteListStop> Stops);
-
 public static class RouteList
 {
-    public static async Task<List<RouteListItem>> BuildAsync(RoutingDbContext db, bool catalog, CancellationToken ct)
+    public static async Task<List<RouteDto>> BuildAsync(RoutingDbContext db, bool catalog, CancellationToken ct)
     {
         var routes = await db.Routes.AsNoTracking()
             .Include(r => r.Stops)
@@ -104,12 +85,12 @@ public static class RouteList
             }
         }
 
-        return routes.Select(r => new RouteListItem(
+        return routes.Select(r => new RouteDto(
             r.Id,
             r.Name,
             r.VehicleId,
             r.Stops.Select(s => visits.TryGetValue(s.Id, out var visit)
-                ? new RouteListStop(
+                ? new RouteStopDto(
                     s.Id,
                     s.RouteId,
                     s.Sequence,
@@ -121,7 +102,7 @@ public static class RouteList
                     s.PhotoDataUrl,
                     visit.At,
                     visit.Skipped)
-                : new RouteListStop(
+                : new RouteStopDto(
                     s.Id,
                     s.RouteId,
                     s.Sequence,
@@ -130,8 +111,6 @@ public static class RouteList
                     s.Latitude,
                     s.Longitude,
                     s.PlannedArrivalUtc,
-                    s.PhotoDataUrl,
-                    null,
-                    false)).ToList())).ToList();
+                    s.PhotoDataUrl)).ToList())).ToList();
     }
 }

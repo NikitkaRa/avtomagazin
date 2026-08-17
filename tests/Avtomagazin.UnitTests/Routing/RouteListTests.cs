@@ -31,7 +31,7 @@ public class RouteListTests
         await db.SaveChangesAsync();
 
         var items = await RouteList.BuildAsync(db, catalog: false, CancellationToken.None);
-        var names = items.SelectMany(r => r.Stops).Select(s => s.SettlementName).ToList();
+        var names = items.SelectMany(r => r.Stops ?? []).Select(s => s.SettlementName).ToList();
 
         Assert.Contains("Индура", names);
         Assert.DoesNotContain("Вчерашняя", names);

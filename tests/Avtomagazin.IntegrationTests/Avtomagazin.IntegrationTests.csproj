@@ -20,6 +20,7 @@
 
   <ItemGroup>
     <Using Include="Xunit" />
+    <Using Include="Avtomagazin.Contracts" />
   </ItemGroup>
 
   <ItemGroup>

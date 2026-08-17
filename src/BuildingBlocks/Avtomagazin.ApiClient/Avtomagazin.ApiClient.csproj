@@ -11,6 +11,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Using Include="Avtomagazin.Contracts" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Avtomagazin.Contracts\Avtomagazin.Contracts.csproj" />
   </ItemGroup>
 

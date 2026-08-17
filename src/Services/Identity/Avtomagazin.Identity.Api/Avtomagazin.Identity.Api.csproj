@@ -21,4 +21,8 @@
     <ProjectReference Include="..\..\..\BuildingBlocks\Avtomagazin.Contracts\Avtomagazin.Contracts.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Using Include="Avtomagazin.Contracts" />
+  </ItemGroup>
+
 </Project>

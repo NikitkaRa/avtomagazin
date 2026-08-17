@@ -602,29 +602,3 @@ internal static class IdentityRoutes
     private static string? NormalizeEmail(string? email)
         => string.IsNullOrWhiteSpace(email) ? null : email.Trim().ToLowerInvariant();
 }
-
-internal sealed record LoginRequest(string Email, string Password);
-
-internal sealed record RegisterRequest(
-    string Email,
-    string Password,
-    string? Name,
-    string? Client,
-    string? StaffRole);
-
-internal sealed record ApproveUserRequest(string? Role, Guid? VehicleId);
-
-internal sealed record AssignVehicleRequest(Guid? VehicleId);
-
-internal sealed record UpdateProfileRequest(
-    string? DisplayName = null,
-    string? LastName = null,
-    string? FirstName = null,
-    string? MiddleName = null,
-    string? Phone = null,
-    string? PhotoDataUrl = null,
-    bool? ClearPhoto = null);
-
-internal sealed record ChangePasswordRequest(string Current, string Next);
-
-internal sealed record SetPasswordRequest(string Password);

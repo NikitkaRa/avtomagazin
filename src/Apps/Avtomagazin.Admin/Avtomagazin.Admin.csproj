@@ -13,4 +13,8 @@
     <BlazorDisableThrowNavigationException>true</BlazorDisableThrowNavigationException>
   </PropertyGroup>
 
+  <ItemGroup>
+    <Using Include="Avtomagazin.Contracts" />
+  </ItemGroup>
+
 </Project>

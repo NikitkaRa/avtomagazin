@@ -54,16 +54,3 @@ internal static class NotificationDevices
         return existing;
     }
 }
-
-public sealed record DeviceRegistrationRequest(
-    Guid? UserId,
-    string DeviceToken,
-    string Platform,
-    string SettlementName);
-
-public sealed record FavoriteStopRequest(
-    Guid? UserId,
-    string DeviceToken,
-    string? Platform,
-    Guid StopId,
-    string SettlementName);
