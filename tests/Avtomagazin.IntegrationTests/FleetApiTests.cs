@@ -17,9 +17,17 @@ public class FleetApiTests : IClassFixture<FleetApiFactory>
     }
 
     [Fact]
-    public async Task Anonymous_can_list_vehicles()
+    public async Task Anonymous_cannot_list_vehicles()
     {
         var response = await _anonymous.GetAsync("/api/vehicles");
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Staff_can_list_vehicles()
+    {
+        using var client = TestJwt.Client(_factory, Roles.Driver, TestJwt.GrodnoVan);
+        var response = await client.GetAsync("/api/vehicles");
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var body = await response.Content.ReadAsStringAsync();
         Assert.Contains("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", body, StringComparison.OrdinalIgnoreCase);
@@ -58,7 +66,7 @@ public class FleetApiTests : IClassFixture<FleetApiFactory>
         {
             latitude = 53.509,
             longitude = 28.247,
-            source = "driver-app"
+            source = GpsSources.DriverApp
         });
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
 

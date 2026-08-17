@@ -7,14 +7,13 @@ namespace Avtomagazin.UnitTests.ApiClient;
 public class DispatchSnapshotClientTests
 {
     [Fact]
-    public async Task GetDispatchSnapshotAsync_fans_out_five_gets_in_parallel()
+    public async Task GetDispatchSnapshotAsync_fans_out_four_gets_in_parallel()
     {
         var hits = new List<string>();
         var handler = new RecordingHandler(hits, path => path switch
         {
             "fleet/api/vehicles" => """[{"id":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","plateNumber":"1234 AB-7","operatorName":"A","isActive":true}]""",
             "routing/api/cases" => """[]""",
-            "routing/api/eta" => """[]""",
             "routing/api/routes" => """[]""",
             "routing/api/driver-notes" => """[]""",
             _ when path.StartsWith("routing/api/cases", StringComparison.Ordinal) => """[]""",
@@ -32,10 +31,10 @@ public class DispatchSnapshotClientTests
         Assert.Empty(snap.DriverNotes);
         Assert.Contains(hits, h => h.Contains("fleet/api/vehicles", StringComparison.Ordinal));
         Assert.Contains(hits, h => h.Contains("routing/api/cases", StringComparison.Ordinal));
-        Assert.Contains(hits, h => h.Contains("routing/api/eta", StringComparison.Ordinal));
+        Assert.DoesNotContain(hits, h => h.Contains("routing/api/eta", StringComparison.Ordinal));
         Assert.Contains(hits, h => h.Contains("routing/api/routes", StringComparison.Ordinal));
         Assert.Contains(hits, h => h.Contains("routing/api/driver-notes", StringComparison.Ordinal));
-        Assert.Equal(5, hits.Count);
+        Assert.Equal(4, hits.Count);
     }
 
     private sealed class RecordingHandler(List<string> hits, Func<string, string> bodyFor) : HttpMessageHandler

@@ -2,11 +2,11 @@
 @page "/fleet/{VehicleId:guid}"
 @using Microsoft.AspNetCore.Components.Forms
 @inject AvtomagazinClient Api
-@inject StaffSession Session
 @inject NavigationManager Nav
 
 <PageTitle>@(IsNew ? "Новая автолавка" : "Автолавка")</PageTitle>
 
+<StaffPageGate OnReady="BootstrapAsync">
 <div class="page-head">
     <div>
         <div class="brand">@(IsNew ? "Новая автолавка" : _plate)</div>
@@ -114,6 +114,7 @@ else
         <button type="button" class="btn" disabled="@_busy" @onclick="SaveAsync">@(IsNew ? "Создать" : "Сохранить")</button>
     </div>
 }
+</StaffPageGate>
 
 @code {
     [Parameter] public Guid? VehicleId { get; set; }
@@ -146,22 +147,8 @@ else
     private IEnumerable<StaffMemberDto> Sellers =>
         _staff.Where(s => s.Role == "seller");
 
-    private bool _bootstrapped;
-
-    protected override async Task OnAfterRenderAsync(bool firstRender)
+    private async Task BootstrapAsync()
     {
-        if (!firstRender || _bootstrapped)
-        {
-            return;
-        }
-
-        _bootstrapped = true;
-        if (!await Session.EnsureAuthenticatedAsync())
-        {
-            Nav.NavigateTo("/");
-            return;
-        }
-
         try
         {
             _staff = await Api.GetStaffAsync();
@@ -179,8 +166,6 @@ else
         {
             _loading = false;
         }
-
-        await InvokeAsync(StateHasChanged);
     }
 
     private async Task LoadAsync()

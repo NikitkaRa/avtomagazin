@@ -1,10 +1,9 @@
 @page "/users"
 @inject AvtomagazinClient Api
-@inject StaffSession Session
-@inject NavigationManager Nav
 
 <PageTitle>Люди</PageTitle>
 
+<StaffPageGate RequireAdmin="true" OnReady="ReloadAsync">
 <div class="page-head">
     <div>
         <div class="brand">Люди</div>
@@ -148,6 +147,7 @@
         </table>
     }
 </section>
+</StaffPageGate>
 
 @code {
     private string? _error;
@@ -202,26 +202,6 @@
                 })
                 .ThenBy(u => u.DisplayName, StringComparer.OrdinalIgnoreCase);
         }
-    }
-
-    private bool _bootstrapped;
-
-    protected override async Task OnAfterRenderAsync(bool firstRender)
-    {
-        if (!firstRender || _bootstrapped)
-        {
-            return;
-        }
-
-        _bootstrapped = true;
-        if (!await Session.EnsureAuthenticatedAsync() || !Session.IsAdmin)
-        {
-            Nav.NavigateTo("/");
-            return;
-        }
-
-        await ReloadAsync();
-        await InvokeAsync(StateHasChanged);
     }
 
     private string SegmentOn(string s) => _segment == s ? "chip-on" : null!;

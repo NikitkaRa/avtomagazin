@@ -2,6 +2,7 @@
 @inject StaffSession Session
 @inject UiToasts Toasts
 @inject IJSRuntime Js
+@using Avtomagazin.Contracts
 @using Microsoft.JSInterop
 @implements IAsyncDisposable
 
@@ -12,6 +13,11 @@
             <div class="who">Жалобы, сообщения водителей и ход рейсов.</div>
         </div>
     </div>
+
+    @if (!string.IsNullOrEmpty(_loadError))
+    {
+        <div class="alert">@_loadError</div>
+    }
 
     <div class="pulse">
         <div class="pulse-item @(_cases.Count > 0 || _notes.Count > 0 ? "pulse-warn" : null)">
@@ -496,6 +502,8 @@
     private string _settlementQuery = "";
     private string? _caseError;
     private bool _busy;
+    private string? _loadError;
+    private bool _loadErrorShown;
     private CancellationTokenSource? _poll;
 
     private int _liveCount => ActiveRoutes.Count(r => r.Live);
@@ -612,16 +620,17 @@
     {
         while (!ct.IsCancellationRequested)
         {
+            await ReloadAsync();
+            await InvokeAsync(StateHasChanged);
+
             try
             {
-                await ReloadAsync();
-                await InvokeAsync(StateHasChanged);
+                await Task.Delay(6000, ct);
             }
-            catch
+            catch (OperationCanceledException)
             {
+                break;
             }
-
-            await Task.Delay(6000, ct);
         }
     }
 
@@ -641,23 +650,19 @@
             _cases = snap.Cases;
             _routes = snap.Routes;
             await ApplyNotesAsync(snap.DriverNotes);
+            _loadError = null;
+            _loadErrorShown = false;
         }
-        catch
+        catch (SessionExpiredException)
         {
-            try
+        }
+        catch (Exception ex)
+        {
+            _loadError = ex.Message;
+            if (!_loadErrorShown)
             {
-                _vans = await Api.GetVehiclesAsync();
-            }
-            catch
-            {
-            }
-
-            try
-            {
-                await ApplyNotesAsync(await Api.GetDriverNotesAsync());
-            }
-            catch
-            {
+                _loadErrorShown = true;
+                Toasts.Error($"Мониторинг: {ex.Message}");
             }
         }
     }
@@ -759,11 +764,7 @@
     {
         try
         {
-            await Js.InvokeVoidAsync(
-                "eval",
-                locked
-                    ? "document.documentElement.classList.add('case-open');document.body.classList.add('case-open');"
-                    : "document.documentElement.classList.remove('case-open');document.body.classList.remove('case-open');");
+            await Js.InvokeVoidAsync("avtomagazinNotify.setBodyLock", locked);
         }
         catch
         {
@@ -829,10 +830,7 @@
         => vehicleId is Guid id ? _vans.FirstOrDefault(v => v.Id == id) : null;
 
     private RouteDto? RouteOf(Guid vehicleId)
-        => _routes
-            .Where(r => r.VehicleId == vehicleId)
-            .OrderBy(r => r.Stops?.Count ?? int.MaxValue)
-            .FirstOrDefault();
+        => RouteDto.ForVehicle(_routes, vehicleId);
 
     private DriverNoteDto? NoteOf(Guid vehicleId)
         => _notes.FirstOrDefault(n => n.VehicleId == vehicleId);
@@ -873,22 +871,10 @@
             return false;
         }
 
-        return DistanceMeters(lat, lng, stop.Latitude, stop.Longitude) <= 150;
+        return GeoMath.DistanceMeters(lat, lng, stop.Latitude, stop.Longitude) <= 150;
     }
 
-    private static double DistanceMeters(double lat1, double lon1, double lat2, double lon2)
-    {
-        const double earth = 6371000;
-        var dLat = (lat2 - lat1) * Math.PI / 180;
-        var dLon = (lon2 - lon1) * Math.PI / 180;
-        var a = Math.Sin(dLat / 2) * Math.Sin(dLat / 2)
-                + Math.Cos(lat1 * Math.PI / 180) * Math.Cos(lat2 * Math.PI / 180)
-                * Math.Sin(dLon / 2) * Math.Sin(dLon / 2);
-        return earth * 2 * Math.Atan2(Math.Sqrt(a), Math.Sqrt(1 - a));
-    }
-
-    private static bool IsLive(VehicleDto van)
-        => string.Equals(van.LastSource, "driver-app", StringComparison.OrdinalIgnoreCase);
+    private static bool IsLive(VehicleDto van) => van.IsLive();
 
     private static string StatusLabel(string status) => status switch
     {

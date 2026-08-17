@@ -1,11 +1,11 @@
 @page "/routes"
 @inject AvtomagazinClient Api
 @inject StaffSession Session
-@inject NavigationManager Nav
 @inject UiToasts Toasts
 
 <PageTitle>Маршруты</PageTitle>
 
+<StaffPageGate OnReady="ReloadAsync">
 <div class="page-head">
     <div>
         <div class="brand">Маршруты</div>
@@ -56,6 +56,7 @@ else
         }
     </ul>
 }
+</StaffPageGate>
 
 @code {
     private bool _loading = true;
@@ -63,26 +64,6 @@ else
     private string? _error;
     private List<RouteDto> _routes = [];
     private List<VehicleDto> _vehicles = [];
-
-    private bool _bootstrapped;
-
-    protected override async Task OnAfterRenderAsync(bool firstRender)
-    {
-        if (!firstRender || _bootstrapped)
-        {
-            return;
-        }
-
-        _bootstrapped = true;
-        if (!await Session.EnsureAuthenticatedAsync())
-        {
-            Nav.NavigateTo("/");
-            return;
-        }
-
-        await ReloadAsync();
-        await InvokeAsync(StateHasChanged);
-    }
 
     private async Task ReloadAsync()
     {

@@ -1,13 +1,13 @@
 @page "/map"
 @inject AvtomagazinClient Api
-@inject StaffSession Session
-@inject NavigationManager Nav
+@inject UiToasts Toasts
 @inject IJSRuntime Js
 @using Microsoft.JSInterop
 @implements IAsyncDisposable
 
 <PageTitle>Карта</PageTitle>
 
+<StaffPageGate OnReady="OnGateReady">
 <div class="page-head">
     <div>
         <div class="brand">Карта</div>
@@ -24,35 +24,38 @@
     </div>
 </div>
 
+@if (!string.IsNullOrEmpty(_loadError))
+{
+    <div class="alert">@_loadError</div>
+}
+</StaffPageGate>
+
 @code {
     private List<VehicleDto> _vans = [];
     private IJSObjectReference? _map;
     private CancellationTokenSource? _poll;
     private bool _mapReady;
+    private bool _gateReady;
+    private string? _loadError;
+    private bool _loadErrorToastShown;
 
     private int _liveCount => _vans.Count(IsLive);
     private int _signalCount => _vans.Count(v => v.LastLatitude is not null);
 
-    private bool _bootstrapped;
+    private async Task OnGateReady()
+    {
+        await ReloadAsync();
+        _gateReady = true;
+        _poll = new CancellationTokenSource();
+        _ = LoopAsync(_poll.Token);
+    }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!firstRender || _bootstrapped)
+        if (!_gateReady || _mapReady)
         {
             return;
         }
-
-        _bootstrapped = true;
-        if (!await Session.EnsureAuthenticatedAsync() || Session.IsVanCrew)
-        {
-            Nav.NavigateTo("/");
-            return;
-        }
-
-        await ReloadAsync();
-        _poll = new CancellationTokenSource();
-        _ = LoopAsync(_poll.Token);
-        await InvokeAsync(StateHasChanged);
 
         try
         {
@@ -64,8 +67,10 @@
         catch (JSDisconnectedException)
         {
         }
-        catch
+        catch (Exception ex)
         {
+            _loadError = ex.Message;
+            Toasts.Error(ex.Message);
         }
     }
 
@@ -73,20 +78,24 @@
     {
         while (!ct.IsCancellationRequested)
         {
-            try
+            await ReloadAsync();
+            if (_mapReady)
             {
-                await ReloadAsync();
                 await InvokeAsync(async () =>
                 {
                     await DrawAsync();
                     StateHasChanged();
                 });
             }
-            catch
-            {
-            }
 
-            await Task.Delay(5000, ct);
+            try
+            {
+                await Task.Delay(5000, ct);
+            }
+            catch (OperationCanceledException)
+            {
+                break;
+            }
         }
     }
 
@@ -95,9 +104,20 @@
         try
         {
             _vans = await Api.GetVehiclesAsync();
+            _loadError = null;
+            _loadErrorToastShown = false;
         }
-        catch
+        catch (SessionExpiredException)
         {
+        }
+        catch (Exception ex)
+        {
+            _loadError = ex.Message;
+            if (!_loadErrorToastShown)
+            {
+                _loadErrorToastShown = true;
+                Toasts.Error($"Карта: {ex.Message}");
+            }
         }
     }
 
@@ -125,8 +145,7 @@
         await _map.InvokeVoidAsync("setMarkers", "staff-live-map", markers);
     }
 
-    private static bool IsLive(VehicleDto van)
-        => string.Equals(van.LastSource, "driver-app", StringComparison.OrdinalIgnoreCase);
+    private static bool IsLive(VehicleDto van) => van.IsLive();
 
     public async ValueTask DisposeAsync()
     {

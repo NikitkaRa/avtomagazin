@@ -1,3 +1,4 @@
+using Avtomagazin.Contracts;
 using Avtomagazin.Contracts.Events;
 using Avtomagazin.Fleet.Api.Data;
 using Avtomagazin.Fleet.Api.Gps;
@@ -53,7 +54,7 @@ public class GpsFixApplierTests
         await using var assert = sp.CreateAsyncScope();
         var vans = await assert.ServiceProvider.GetRequiredService<FleetDbContext>()
             .Vehicles.AsNoTracking().OrderBy(v => v.PlateNumber).ToListAsync();
-        Assert.All(vans, v => Assert.Equal("gps-adapter", v.LastSource));
+        Assert.All(vans, v => Assert.Equal(GpsSources.Adapter, v.LastSource));
         Assert.Equal(2, await assert.ServiceProvider.GetRequiredService<FleetDbContext>().Positions.CountAsync());
 
         await harness.Stop();
@@ -83,7 +84,7 @@ public class GpsFixApplierTests
                 PlateNumber = "1234 AB-7",
                 OperatorName = "A",
                 IsActive = true,
-                LastSource = "driver-app",
+                LastSource = GpsSources.DriverApp,
                 LastLatitude = 53.0,
                 LastLongitude = 23.0,
                 LastSeenAtUtc = DateTimeOffset.UtcNow.AddSeconds(-10)
@@ -104,7 +105,7 @@ public class GpsFixApplierTests
         await using var assert = sp.CreateAsyncScope();
         var van = await assert.ServiceProvider.GetRequiredService<FleetDbContext>()
             .Vehicles.AsNoTracking().SingleAsync();
-        Assert.Equal("driver-app", van.LastSource);
+        Assert.Equal(GpsSources.DriverApp, van.LastSource);
         Assert.Equal(53.0, van.LastLatitude);
         Assert.Empty(await assert.ServiceProvider.GetRequiredService<FleetDbContext>().Positions.ToListAsync());
 

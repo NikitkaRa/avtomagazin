@@ -1,5 +1,9 @@
 window.avtomagazinNotify = {
-    softAlert() {
+        setBodyLock(locked) {
+            document.documentElement.classList.toggle('case-open', !!locked);
+            document.body.classList.toggle('case-open', !!locked);
+        },
+        softAlert() {
         try {
             const AudioCtx = window.AudioContext || window.webkitAudioContext;
             if (!AudioCtx) {

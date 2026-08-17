@@ -5,6 +5,8 @@ using Avtomagazin.Contracts;
 using Avtomagazin.ServiceDefaults;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.FileProviders;
+using Microsoft.Extensions.Hosting;
 
 namespace Avtomagazin.UnitTests;
 
@@ -35,11 +37,27 @@ public class SessionGuardTests
     }
 
     [Fact]
+    public async Task Fail_closed_in_production_when_identity_is_down()
+    {
+        var userId = Guid.NewGuid();
+        var guard = Guard(new StubHandler(HttpStatusCode.ServiceUnavailable, "{}"), Environments.Production);
+        Assert.False(await guard.ValidateAsync(Principal(userId, 1)));
+    }
+
+    [Fact]
     public async Task Fail_open_when_identity_throws()
     {
         var userId = Guid.NewGuid();
         var guard = Guard(new ThrowingHandler());
         Assert.True(await guard.ValidateAsync(Principal(userId, 1)));
+    }
+
+    [Fact]
+    public async Task Fail_closed_in_production_when_identity_throws()
+    {
+        var userId = Guid.NewGuid();
+        var guard = Guard(new ThrowingHandler(), Environments.Production);
+        Assert.False(await guard.ValidateAsync(Principal(userId, 1)));
     }
 
     [Fact]
@@ -50,7 +68,7 @@ public class SessionGuardTests
         Assert.False(await guard.ValidateAsync(Principal(userId, 1)));
     }
 
-    private static HttpSessionGuard Guard(HttpMessageHandler handler)
+    private static HttpSessionGuard Guard(HttpMessageHandler handler, string environment = "Development")
     {
         var http = new HttpClient(handler) { BaseAddress = new Uri("http://identity/") };
         var cache = new MemoryCache(new MemoryCacheOptions());
@@ -58,7 +76,7 @@ public class SessionGuardTests
         {
             ["Internal:Key"] = "dev-internal-key"
         }).Build();
-        return new HttpSessionGuard(http, cache, config);
+        return new HttpSessionGuard(http, cache, config, new StubEnv(environment));
     }
 
     private static ClaimsPrincipal Principal(Guid userId, int tokenVersion)
@@ -67,6 +85,14 @@ public class SessionGuardTests
             new Claim(ClaimTypes.NameIdentifier, userId.ToString()),
             new Claim(AuthClaims.TokenVersion, tokenVersion.ToString())
         ], "test"));
+
+    private sealed class StubEnv(string name) : IHostEnvironment
+    {
+        public string EnvironmentName { get; set; } = name;
+        public string ApplicationName { get; set; } = "test";
+        public string ContentRootPath { get; set; } = AppContext.BaseDirectory;
+        public IFileProvider ContentRootFileProvider { get; set; } = new NullFileProvider();
+    }
 
     private sealed class StubHandler(HttpStatusCode status, string body) : HttpMessageHandler
     {

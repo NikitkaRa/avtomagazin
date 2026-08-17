@@ -16,9 +16,17 @@ public class RoutingApiTests : IClassFixture<RoutingApiFactory>
     }
 
     [Fact]
-    public async Task Anonymous_can_read_routes()
+    public async Task Anonymous_cannot_read_routes()
     {
         var response = await _anonymous.GetAsync("/api/routes");
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Staff_can_read_routes()
+    {
+        using var client = TestJwt.Client(_factory, Roles.Driver, TestJwt.PukhovichiVan);
+        var response = await client.GetAsync("/api/routes");
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var body = await response.Content.ReadAsStringAsync();
         Assert.Contains("Озеричино", body);

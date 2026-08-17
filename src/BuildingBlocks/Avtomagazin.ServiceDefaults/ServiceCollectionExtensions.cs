@@ -39,6 +39,10 @@ public static class ServiceCollectionExtensions
                 client.Timeout = TimeSpan.FromSeconds(2);
             });
         }
+        else if (DeploySecrets.IsPublic(builder.Environment))
+        {
+            throw new InvalidOperationException("Internal:IdentityBaseUrl is required in Staging/Production.");
+        }
         else
         {
             builder.Services.AddSingleton<ISessionGuard, NoopSessionGuard>();

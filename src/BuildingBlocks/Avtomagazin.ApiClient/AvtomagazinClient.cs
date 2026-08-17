@@ -2,6 +2,7 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Avtomagazin.Contracts;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Avtomagazin.ApiClient;
@@ -242,7 +243,7 @@ public sealed class AvtomagazinClient(HttpClient http, IAccessTokenAccessor? tok
         ApplyAuth();
         var response = await http.PostAsJsonAsync(
             $"fleet/api/vehicles/{vehicleId}/positions",
-            new { latitude, longitude, speedKmh, source = "driver-app" },
+            new { latitude, longitude, speedKmh, source = GpsSources.DriverApp },
             ct);
         await EnsureSuccessAsync(response, ct);
     }
@@ -468,9 +469,8 @@ public sealed class AvtomagazinClient(HttpClient http, IAccessTokenAccessor? tok
     {
         var vehiclesTask = SafeListAsync(() => GetVehiclesAsync(ct));
         var routesTask = SafeListAsync(() => GetRoutesAsync(ct));
-        var etaTask = SafeListAsync(() => GetEtaAsync(ct: ct));
         var notesTask = SafeListAsync(() => GetDriverNotesAsync(ct));
-        await Task.WhenAll(vehiclesTask, routesTask, etaTask, notesTask);
+        await Task.WhenAll(vehiclesTask, routesTask, notesTask);
         var vehicles = await vehiclesTask;
         var routes = await routesTask;
         if (vehicles.Count == 0 && routes.Count == 0)
@@ -482,7 +482,7 @@ public sealed class AvtomagazinClient(HttpClient http, IAccessTokenAccessor? tok
             DateTimeOffset.UtcNow,
             vehicles,
             routes,
-            await etaTask,
+            [],
             await notesTask);
     }
 
@@ -492,7 +492,7 @@ public sealed class AvtomagazinClient(HttpClient http, IAccessTokenAccessor? tok
         {
             return await load();
         }
-        catch
+        catch (Exception ex) when (ex is not SessionExpiredException and not OperationCanceledException)
         {
             return [];
         }
@@ -502,15 +502,14 @@ public sealed class AvtomagazinClient(HttpClient http, IAccessTokenAccessor? tok
     {
         var vehiclesTask = GetVehiclesAsync(ct);
         var casesTask = GetCasesAsync(caseStatus, ct);
-        var etaTask = GetEtaAsync(ct: ct);
         var routesTask = GetRoutesAsync(ct);
         var notesTask = SafeListAsync(() => GetDriverNotesAsync(ct));
-        await Task.WhenAll(vehiclesTask, casesTask, etaTask, routesTask, notesTask);
+        await Task.WhenAll(vehiclesTask, casesTask, routesTask, notesTask);
         return new DispatchSnapshotDto(
             DateTimeOffset.UtcNow,
             await vehiclesTask,
             await casesTask,
-            await etaTask,
+            [],
             await routesTask,
             await notesTask);
     }
@@ -604,7 +603,17 @@ public sealed record VehicleDto(
     string? OperatorPhone = null,
     Guid? DriverUserId = null,
     Guid? SellerUserId = null,
-    string? PhotoDataUrl = null);
+    string? PhotoDataUrl = null)
+{
+    public bool IsLive(TimeSpan? maxAge = null)
+    {
+        var window = maxAge ?? TimeSpan.FromSeconds(90);
+        return LastLatitude is not null
+               && LastLongitude is not null
+               && LastSeenAtUtc is DateTimeOffset at
+               && DateTimeOffset.UtcNow - at <= window;
+    }
+}
 
 public sealed record UpsertVehicleRequest(
     string PlateNumber,
@@ -629,7 +638,23 @@ public sealed record UpdateVehicleContactsRequest(
     string? SellerPhone,
     string? OperatorPhone);
 
-public sealed record RouteDto(Guid Id, string Name, Guid VehicleId, List<RouteStopDto>? Stops);
+public sealed record RouteDto(Guid Id, string Name, Guid VehicleId, List<RouteStopDto>? Stops)
+{
+    public static RouteDto? ForVehicle(IEnumerable<RouteDto> routes, Guid vehicleId)
+        => routes
+            .Where(r => r.VehicleId == vehicleId)
+            .Select(r => (
+                Route: r,
+                Next: r.Stops?
+                    .Where(s => s.ArrivedAtUtc is null)
+                    .OrderBy(s => s.Sequence)
+                    .FirstOrDefault()))
+            .OrderBy(x => x.Next is null ? 1 : 0)
+            .ThenBy(x => x.Next?.PlannedArrivalUtc ?? DateTimeOffset.MaxValue)
+            .ThenBy(x => x.Route.Name)
+            .Select(x => x.Route)
+            .FirstOrDefault();
+}
 
 public sealed record RouteStopDto(
     Guid Id,
@@ -712,8 +737,7 @@ public sealed record CoverageDto(
 public sealed record CoverageVisitRequest(
     Guid VehicleId,
     Guid StopId,
-    DateTimeOffset? ArrivedAtUtc,
-    bool WithinScheduledWindow);
+    DateTimeOffset? ArrivedAtUtc);
 
 public sealed record DeviceRegistrationRequest(
     Guid? UserId,

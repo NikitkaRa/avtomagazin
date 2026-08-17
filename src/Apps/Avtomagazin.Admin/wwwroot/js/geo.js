@@ -26,23 +26,6 @@ export function startWatch(dotNetRef) {
     return id;
 }
 
-export function startDemo(dotNetRef, points) {
-    const id = nextId++;
-    let i = 0;
-    const ping = () => {
-        if (!points || points.length === 0) {
-            return;
-        }
-        const p = points[i % points.length];
-        dotNetRef.invokeMethodAsync("OnGeo", p.lat, p.lng, 32, 8);
-        i += 1;
-    };
-    ping();
-    const timer = setInterval(ping, 2500);
-    watches[id] = { type: "demo", timer };
-    return id;
-}
-
 export function stop(id) {
     const w = watches[id];
     if (!w) {
@@ -50,9 +33,6 @@ export function stop(id) {
     }
     if (w.type === "geo") {
         navigator.geolocation.clearWatch(w.wid);
-    }
-    if (w.type === "demo") {
-        clearInterval(w.timer);
     }
     delete watches[id];
 }

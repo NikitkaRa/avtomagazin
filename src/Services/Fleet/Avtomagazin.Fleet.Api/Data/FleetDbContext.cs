@@ -1,3 +1,4 @@
+using Avtomagazin.Contracts;
 using Microsoft.EntityFrameworkCore;
 
 namespace Avtomagazin.Fleet.Api.Data;
@@ -63,7 +64,7 @@ public sealed class VehiclePosition
     public double Longitude { get; set; }
     public double? SpeedKmh { get; set; }
     public DateTimeOffset RecordedAtUtc { get; set; }
-    public string Source { get; set; } = "gps";
+    public string Source { get; set; } = GpsSources.Adapter;
 }
 
 public static class Seed
@@ -134,38 +135,25 @@ public static class Seed
         string sellerPhone,
         string operatorPhone)
     {
-        var vehicle = await db.Vehicles.FirstOrDefaultAsync(v => v.Id == id);
-        if (vehicle is null)
+        if (await db.Vehicles.AnyAsync(v => v.Id == id))
         {
-            db.Vehicles.Add(new Vehicle
-            {
-                Id = id,
-                PlateNumber = plate,
-                OperatorName = operatorName,
-                DriverName = driverName,
-                DriverPhone = driverPhone,
-                SellerName = sellerName,
-                SellerPhone = sellerPhone,
-                OperatorPhone = operatorPhone,
-                LastLatitude = lat,
-                LastLongitude = lng,
-                LastSeenAtUtc = DateTimeOffset.UtcNow,
-                LastSource = "driver-app"
-            });
             return;
         }
 
-        vehicle.PlateNumber = plate;
-        vehicle.OperatorName = operatorName;
-        vehicle.DriverName = driverName;
-        vehicle.DriverPhone = driverPhone;
-        vehicle.SellerName = sellerName;
-        vehicle.SellerPhone = sellerPhone;
-        vehicle.OperatorPhone = operatorPhone;
-        // Keep demo vans near their route so ETA is not absurd after emulator GPS noise.
-        vehicle.LastLatitude = lat;
-        vehicle.LastLongitude = lng;
-        vehicle.LastSeenAtUtc = DateTimeOffset.UtcNow;
-        vehicle.LastSource = "driver-app";
+        db.Vehicles.Add(new Vehicle
+        {
+            Id = id,
+            PlateNumber = plate,
+            OperatorName = operatorName,
+            DriverName = driverName,
+            DriverPhone = driverPhone,
+            SellerName = sellerName,
+            SellerPhone = sellerPhone,
+            OperatorPhone = operatorPhone,
+            LastLatitude = lat,
+            LastLongitude = lng,
+            LastSeenAtUtc = DateTimeOffset.UtcNow,
+            LastSource = GpsSources.Seed
+        });
     }
 }

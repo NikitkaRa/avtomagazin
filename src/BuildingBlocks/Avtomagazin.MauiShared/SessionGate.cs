@@ -42,11 +42,12 @@ public static class SessionGate
         {
             if (session.UserId is Guid uid)
             {
+                var settlement = Preferences.Default.Get("settlement", "");
                 await api.Client.RegisterDeviceAsync(new(
                     uid,
                     session.DeviceToken,
                     session.Platform,
-                    "Озеричино"));
+                    settlement));
             }
 
             if (session.IsResident)

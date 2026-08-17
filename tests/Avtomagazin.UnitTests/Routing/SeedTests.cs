@@ -37,7 +37,7 @@ public class SeedTests
     }
 
     [Fact]
-    public async Task EnsureSeed_moves_ozerichino_off_grodno_route()
+    public async Task EnsureSeed_does_not_steal_existing_stop()
     {
         var options = new DbContextOptionsBuilder<RoutingDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
@@ -45,6 +45,7 @@ public class SeedTests
 
         await using var db = new RoutingDbContext(options);
         var grodnoId = Guid.Parse("cccccccc-cccc-cccc-cccc-cccccccccccc");
+        var stopId = Guid.Parse("dddddddd-dddd-dddd-dddd-ddddddddddd4");
         db.Routes.Add(new TradeRoute
         {
             Id = grodnoId,
@@ -54,7 +55,7 @@ public class SeedTests
             [
                 new RouteStop
                 {
-                    Id = Guid.Parse("dddddddd-dddd-dddd-dddd-ddddddddddd4"),
+                    Id = stopId,
                     RouteId = grodnoId,
                     Sequence = 4,
                     SettlementName = "Озеричино",
@@ -69,9 +70,9 @@ public class SeedTests
 
         await Seed.EnsureSeedAsync(db);
 
-        var home = Assert.Single(db.Stops.Where(s => s.SettlementName == "Озеричино"));
-        var route = await db.Routes.SingleAsync(r => r.Id == home.RouteId);
-        Assert.Equal("Пуховичи — Озеричино", route.Name);
+        var home = await db.Stops.AsNoTracking().SingleAsync(s => s.Id == stopId);
+        Assert.Equal(grodnoId, home.RouteId);
+        Assert.Equal("Озеричино", home.SettlementName);
     }
 
     [Fact]

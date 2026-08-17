@@ -1,12 +1,12 @@
 @page "/profile"
 @inject AvtomagazinClient Api
 @inject StaffSession Session
-@inject NavigationManager Nav
 @inject UiToasts Toasts
 @using Microsoft.AspNetCore.Components.Forms
 
 <PageTitle>Профиль</PageTitle>
 
+<StaffPageGate DenyVanCrew="false" OnReady="LoadProfileAsync">
 <div class="page-head">
     <div>
         <div class="brand">Профиль</div>
@@ -70,11 +70,11 @@ else
         </div>
     </section>
 }
+</StaffPageGate>
 
 @code {
     private bool _loading = true;
     private bool _busy;
-    private bool _loaded;
     private string _email = "";
     private string _lastName = "";
     private string _firstName = "";
@@ -85,20 +85,8 @@ else
     private bool _clearPhoto;
     private bool _photoDirty;
 
-    protected override async Task OnAfterRenderAsync(bool firstRender)
+    private async Task LoadProfileAsync()
     {
-        if (!firstRender || _loaded)
-        {
-            return;
-        }
-
-        if (!await Session.EnsureAuthenticatedAsync())
-        {
-            Nav.NavigateTo("/");
-            return;
-        }
-
-        _loaded = true;
         try
         {
             var me = await Api.GetProfileAsync();
@@ -133,7 +121,6 @@ else
         finally
         {
             _loading = false;
-            await InvokeAsync(StateHasChanged);
         }
     }
 

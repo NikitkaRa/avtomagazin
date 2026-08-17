@@ -1,10 +1,9 @@
 @page "/coverage"
 @inject AvtomagazinClient Api
-@inject StaffSession Session
-@inject NavigationManager Nav
 
 <PageTitle>Покрытие</PageTitle>
 
+<StaffPageGate OnReady="LoadAsync">
 <h1>Социальные стандарты / coverage</h1>
 <p class="lead">Визиты автолавок в населённые пункты (позже уйдёт в «Умный город»).</p>
 
@@ -25,9 +24,6 @@
                 <option value="@s.Id">@s.SettlementName (@s.Sequence)</option>
             }
         </select>
-        <label class="check">
-            <input type="checkbox" @bind="_onTime" /> вовремя
-        </label>
         <button class="btn" @onclick="RecordAsync">Записать</button>
     </div>
 </section>
@@ -58,6 +54,7 @@
     }
     </tbody>
 </table>
+</StaffPageGate>
 
 @code {
     private string? _error;
@@ -66,37 +63,20 @@
     private List<RouteStopDto> _stops = [];
     private Guid _vehicleId;
     private Guid _stopId;
-    private bool _onTime = true;
 
-    private bool _bootstrapped;
-
-    protected override async Task OnAfterRenderAsync(bool firstRender)
+    private async Task LoadAsync()
     {
-        if (!firstRender || _bootstrapped)
-        {
-            return;
-        }
-
-        _bootstrapped = true;
-        if (!await Session.EnsureAuthenticatedAsync())
-        {
-            Nav.NavigateTo("/");
-            return;
-        }
-
         try
         {
             _vehicles = await Api.GetVehiclesAsync();
-            var routes = await Api.GetRoutesAsync(catalog: true);
-            _stops = routes.SelectMany(r => r.Stops).ToList();
+            var routes = await Api.GetRoutesAsync();
+            _stops = routes.SelectMany(r => r.Stops ?? []).ToList();
             _coverage = await Api.GetCoverageAsync();
         }
         catch (Exception ex)
         {
             _error = ex.Message;
         }
-
-        await InvokeAsync(StateHasChanged);
     }
 
     private async Task RecordAsync()
@@ -109,7 +89,7 @@
 
         try
         {
-            await Api.RecordCoverageAsync(new CoverageVisitRequest(_vehicleId, _stopId, null, _onTime));
+            await Api.RecordCoverageAsync(new CoverageVisitRequest(_vehicleId, _stopId, null));
             _coverage = await Api.GetCoverageAsync();
             _error = null;
         }

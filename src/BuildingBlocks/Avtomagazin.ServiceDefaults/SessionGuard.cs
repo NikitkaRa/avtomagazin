@@ -21,8 +21,11 @@ public sealed class NoopSessionGuard : ISessionGuard
 public sealed class HttpSessionGuard(
     HttpClient http,
     IMemoryCache cache,
-    IConfiguration config) : ISessionGuard
+    IConfiguration config,
+    IHostEnvironment env) : ISessionGuard
 {
+    private bool FailClosed => DeploySecrets.IsPublic(env);
+
     public async Task<bool> ValidateAsync(ClaimsPrincipal principal, CancellationToken ct = default)
     {
         var userId = principal.UserId();
@@ -65,7 +68,7 @@ public sealed class HttpSessionGuard(
 
             if (snapshot is null || snapshot.Unreachable)
             {
-                return true;
+                return !FailClosed;
             }
 
             return snapshot.Status == UserStatuses.Active
@@ -73,7 +76,7 @@ public sealed class HttpSessionGuard(
         }
         catch
         {
-            return true;
+            return !FailClosed;
         }
     }
 

@@ -22,11 +22,12 @@ var notificationsCs = DeploySecrets.ConnectionString(
     "Notifications",
     "Host=localhost;Port=5432;Database=avtomagazin_notifications;Username=avtomagazin;Password=avtomagazin");
 
+var notificationsTestDb = $"avtomagazin-notifications-tests-{Guid.NewGuid()}";
 builder.Services.AddDbContext<NotificationsDbContext>(options =>
 {
     if (builder.Environment.IsEnvironment("Testing"))
     {
-        options.UseInMemoryDatabase("avtomagazin-notifications-tests");
+        options.UseInMemoryDatabase(notificationsTestDb);
         return;
     }
 
@@ -53,27 +54,7 @@ app.UseAvtomagazinDefaults();
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<NotificationsDbContext>();
-    await db.Database.EnsureCreatedAsync();
-    if (db.Database.IsRelational())
-    {
-        await db.Database.ExecuteSqlRawAsync(
-            """
-            CREATE TABLE IF NOT EXISTS "FavoriteStops" (
-                "Id" uuid NOT NULL PRIMARY KEY,
-                "UserId" uuid,
-                "DeviceSubscriptionId" uuid NOT NULL,
-                "StopId" uuid NOT NULL,
-                "SettlementName" character varying(200) NOT NULL,
-                "CreatedAtUtc" timestamp with time zone NOT NULL
-            );
-            ALTER TABLE "FavoriteStops" ADD COLUMN IF NOT EXISTS "UserId" uuid;
-            CREATE UNIQUE INDEX IF NOT EXISTS "IX_FavoriteStops_DeviceSubscriptionId_StopId"
-                ON "FavoriteStops" ("DeviceSubscriptionId", "StopId");
-            CREATE UNIQUE INDEX IF NOT EXISTS "IX_FavoriteStops_UserId_StopId"
-                ON "FavoriteStops" ("UserId", "StopId")
-                WHERE "UserId" IS NOT NULL;
-            """);
-    }
+    await RelationalSchema.ApplyAsync(db);
 
     if (app.Environment.IsDevelopment())
     {

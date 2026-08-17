@@ -70,7 +70,7 @@ public sealed class SnapshotStore
         {
             var live = await api.GetSnapshotAsync();
             // Empty day routes are fine — vehicles alone mean the gateway answered.
-            if (live.Vehicles.Count == 0 && live.Routes.Count == 0 && live.Eta.Count == 0)
+            if (live.Vehicles.Count == 0 && live.Routes.Count == 0)
             {
                 throw new InvalidOperationException("пустой ответ сервера");
             }

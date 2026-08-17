@@ -25,18 +25,8 @@ internal static class Seed
 
         foreach (var row in demo)
         {
-            var existing = await db.Users.FirstOrDefaultAsync(u => u.Email == row.Email);
-            if (existing is not null)
+            if (await db.Users.AnyAsync(u => u.Email == row.Email))
             {
-                if (existing.VehicleId != row.VehicleId)
-                {
-                    existing.VehicleId = row.VehicleId;
-                }
-
-                existing.DisplayName = row.Name;
-                existing.Role = row.Role;
-                existing.Status = UserStatuses.Active;
-                existing.ApprovedAtUtc ??= DateTimeOffset.UtcNow;
                 continue;
             }
 

@@ -1,8 +1,6 @@
 @page "/notifications"
 @page "/favorites"
 @inject AvtomagazinClient Api
-@inject StaffSession Session
-@inject NavigationManager Nav
 @inject UiToasts Toasts
 @inject IJSRuntime Js
 @using Microsoft.JSInterop
@@ -10,6 +8,7 @@
 
 <PageTitle>Подписки</PageTitle>
 
+<StaffPageGate OnReady="LoadAsync">
 <div class="page-head">
     <div>
         <div class="brand">Избранное жителей</div>
@@ -62,6 +61,7 @@ else
         </section>
     }
 }
+</StaffPageGate>
 
 @code {
     private const int ScaleMin = 0;
@@ -69,18 +69,13 @@ else
 
     private bool _loading = true;
     private bool _mapReady;
+    private bool _gateReady;
     private List<FavoriteStatsDto> _stats = [];
     private List<object> _points = [];
     private IJSObjectReference? _map;
 
-    protected override async Task OnInitializedAsync()
+    private async Task LoadAsync()
     {
-        if (!await Session.EnsureAuthenticatedAsync())
-        {
-            Nav.NavigateTo("/");
-            return;
-        }
-
         try
         {
             var routesTask = Api.GetRoutesAsync(catalog: true);
@@ -90,11 +85,7 @@ else
             _stats = await statsTask;
 
             var byStop = _stats.ToDictionary(s => s.StopId, s => s.SubscriberCount);
-            var byName = _stats
-                .GroupBy(s => s.SettlementName, StringComparer.OrdinalIgnoreCase)
-                .ToDictionary(g => g.Key, g => g.Max(x => x.SubscriberCount), StringComparer.OrdinalIgnoreCase);
 
-            // Prefer unique settlement+coords so heat + operational duplicates don't stack as one pin.
             var seen = new HashSet<string>(StringComparer.Ordinal);
             _points = [];
             foreach (var stop in routes.SelectMany(r => r.Stops ?? []))
@@ -105,15 +96,7 @@ else
                     continue;
                 }
 
-                var count = 0;
-                if (byStop.TryGetValue(stop.Id, out var byId))
-                {
-                    count = byId;
-                }
-                else if (byName.TryGetValue(stop.SettlementName, out var named))
-                {
-                    count = named;
-                }
+                var count = byStop.GetValueOrDefault(stop.Id);
 
                 _points.Add(new
                 {
@@ -134,12 +117,13 @@ else
         finally
         {
             _loading = false;
+            _gateReady = true;
         }
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (_loading || _mapReady)
+        if (!_gateReady || _loading || _mapReady)
         {
             return;
         }

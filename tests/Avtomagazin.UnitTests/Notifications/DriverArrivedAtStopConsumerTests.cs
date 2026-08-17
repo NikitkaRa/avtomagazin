@@ -13,7 +13,7 @@ namespace Avtomagazin.UnitTests.Notifications;
 public class DriverArrivedAtStopConsumerTests
 {
     [Fact]
-    public async Task Consume_sends_push_to_favorite_and_legacy_settlement_devices()
+    public async Task Consume_sends_push_only_to_stop_favorites_not_settlement_name()
     {
         var dbName = Guid.NewGuid().ToString();
         var push = Substitute.For<IPushSender>();
@@ -40,10 +40,10 @@ public class DriverArrivedAtStopConsumerTests
                 SettlementName = "Озёры",
                 CreatedAtUtc = DateTimeOffset.UtcNow
             };
-            var legacy = new DeviceSubscription
+            var settlementOnly = new DeviceSubscription
             {
                 Id = Guid.NewGuid(),
-                DeviceToken = "device-legacy",
+                DeviceToken = "device-settlement",
                 Platform = "ios",
                 SettlementName = "Индура",
                 CreatedAtUtc = DateTimeOffset.UtcNow
@@ -56,7 +56,7 @@ public class DriverArrivedAtStopConsumerTests
                 SettlementName = "Скидель",
                 CreatedAtUtc = DateTimeOffset.UtcNow
             };
-            db.DeviceSubscriptions.AddRange(favoriteDevice, legacy, other);
+            db.DeviceSubscriptions.AddRange(favoriteDevice, settlementOnly, other);
             favoriteDevice.Favorites.Add(new FavoriteStop
             {
                 Id = Guid.NewGuid(),
@@ -82,8 +82,8 @@ public class DriverArrivedAtStopConsumerTests
             Arg.Any<string>(),
             Arg.Is<string>(b => b.Contains("Индура")),
             Arg.Any<CancellationToken>());
-        await push.Received(1).SendAsync(
-            "device-legacy",
+        await push.DidNotReceive().SendAsync(
+            "device-settlement",
             Arg.Any<string>(),
             Arg.Any<string>(),
             Arg.Any<CancellationToken>());
@@ -98,7 +98,7 @@ public class DriverArrivedAtStopConsumerTests
             .GetRequiredService<NotificationsDbContext>()
             .NotificationLogs.AsNoTracking()
             .ToListAsync();
-        Assert.Contains(logs, l => l.SettlementName == "Индура" && l.RecipientCount == 2);
+        Assert.Contains(logs, l => l.SettlementName == "Индура" && l.RecipientCount == 1);
 
         await harness.Stop();
     }

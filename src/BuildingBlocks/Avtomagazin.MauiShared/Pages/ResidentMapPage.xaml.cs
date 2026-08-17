@@ -6,7 +6,7 @@ public partial class ResidentMapPage : ContentPage
 {
     private readonly SnapshotStore _snapshot;
     private readonly ApiHub _api;
-    private string _settlement = "Озеричино";
+    private string _settlement = "";
     private IDispatcherTimer? _timer;
 
     public ResidentMapPage(SnapshotStore snapshot, ApiHub api)
@@ -14,7 +14,7 @@ public partial class ResidentMapPage : ContentPage
         InitializeComponent();
         _snapshot = snapshot;
         _api = api;
-        _settlement = Preferences.Default.Get("settlement", "Озеричино");
+        _settlement = Preferences.Default.Get("settlement", "");
     }
 
     protected override async void OnAppearing()
@@ -84,9 +84,9 @@ public partial class ResidentMapPage : ContentPage
     {
         Chips.Children.Clear();
         var names = _snapshot.AllStops().Select(s => s.SettlementName).Distinct().ToList();
-        if (names.Count == 0)
+        if (names.Count > 0 && string.IsNullOrWhiteSpace(_settlement))
         {
-            names = ["Озеричино", "Правдинский", "Дукора", "Индура"];
+            _settlement = names[0];
         }
 
         foreach (var name in names)

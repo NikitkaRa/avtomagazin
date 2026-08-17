@@ -11,6 +11,7 @@
 
 <PageTitle>@(IsNew ? "Новый маршрут" : "Редактор маршрута")</PageTitle>
 
+<StaffPageGate OnReady="BootstrapAsync">
 <div class="page-head">
     <div>
         <div class="brand">@(IsNew ? "Новый маршрут" : "Редактор")</div>
@@ -137,6 +138,7 @@
         <button type="button" class="btn btn-ghost" disabled="@_busy" @onclick="ReloadAsync">Сбросить</button>
     }
 </div>
+</StaffPageGate>
 
 @code {
     [Parameter] public Guid? RouteId { get; set; }
@@ -167,29 +169,22 @@
         public bool PhotoDirty { get; set; }
     }
 
-    private bool _bootstrapped;
+    private bool _gateReady;
+
+    private async Task BootstrapAsync()
+    {
+        _vehicles = await Api.GetVehiclesAsync();
+        if (!IsNew)
+        {
+            await LoadRouteAsync();
+        }
+
+        _gateReady = true;
+    }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (firstRender && !_bootstrapped)
-        {
-            _bootstrapped = true;
-            if (!await Session.EnsureAuthenticatedAsync())
-            {
-                Nav.NavigateTo("/");
-                return;
-            }
-
-            _vehicles = await Api.GetVehiclesAsync();
-            if (!IsNew)
-            {
-                await LoadRouteAsync();
-            }
-
-            await InvokeAsync(StateHasChanged);
-        }
-
-        if (!firstRender || _mapReady || !_bootstrapped || !Session.IsAuthenticated)
+        if (!firstRender || _mapReady || !_gateReady)
         {
             return;
         }

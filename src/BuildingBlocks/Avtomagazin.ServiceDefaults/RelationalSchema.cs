@@ -1,0 +1,65 @@
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
+
+namespace Avtomagazin.ServiceDefaults;
+
+public static class RelationalSchema
+{
+    public static async Task ApplyAsync(DbContext db, CancellationToken ct = default)
+    {
+        if (!db.Database.IsRelational())
+        {
+            await db.Database.EnsureCreatedAsync(ct);
+            return;
+        }
+
+        if (await NeedsBaselineAsync(db, ct))
+        {
+            await BaselineAsync(db, ct);
+            return;
+        }
+
+        await db.Database.MigrateAsync(ct);
+    }
+
+    private static async Task<bool> NeedsBaselineAsync(DbContext db, CancellationToken ct)
+    {
+        var history = db.GetService<IHistoryRepository>();
+        if (history.Exists())
+        {
+            return false;
+        }
+
+        await db.Database.OpenConnectionAsync(ct);
+        await using var cmd = db.Database.GetDbConnection().CreateCommand();
+        cmd.CommandText =
+            """
+            SELECT EXISTS (
+                SELECT 1
+                FROM information_schema.tables
+                WHERE table_schema = 'public'
+                  AND table_type = 'BASE TABLE'
+                  AND table_name <> '__EFMigrationsHistory'
+            )
+            """;
+        var result = await cmd.ExecuteScalarAsync(ct);
+        return result is true;
+    }
+
+    private static async Task BaselineAsync(DbContext db, CancellationToken ct)
+    {
+        var history = db.GetService<IHistoryRepository>();
+        var create = history.GetCreateIfNotExistsScript();
+        if (!string.IsNullOrWhiteSpace(create))
+        {
+            await db.Database.ExecuteSqlRawAsync(create, ct);
+        }
+
+        var version = typeof(HistoryRepository).Assembly.GetName().Version?.ToString(3) ?? "10.0.11";
+        foreach (var id in db.Database.GetMigrations())
+        {
+            await db.Database.ExecuteSqlRawAsync(history.GetInsertScript(new HistoryRow(id, version)), ct);
+        }
+    }
+}

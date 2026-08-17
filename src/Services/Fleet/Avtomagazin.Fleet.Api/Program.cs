@@ -19,11 +19,12 @@ var fleetCs = DeploySecrets.ConnectionString(
     "Fleet",
     "Host=localhost;Port=5432;Database=avtomagazin_fleet;Username=avtomagazin;Password=avtomagazin");
 
+var fleetTestDb = $"avtomagazin-fleet-tests-{Guid.NewGuid()}";
 builder.Services.AddDbContext<FleetDbContext>(options =>
 {
     if (builder.Environment.IsEnvironment("Testing"))
     {
-        options.UseInMemoryDatabase("avtomagazin-fleet-tests");
+        options.UseInMemoryDatabase(fleetTestDb);
         return;
     }
 
@@ -49,33 +50,19 @@ app.UseAvtomagazinDefaults();
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<FleetDbContext>();
-    await db.Database.EnsureCreatedAsync();
-    if (db.Database.IsRelational())
+    await RelationalSchema.ApplyAsync(db);
+    var seedDemo = app.Configuration.GetValue(
+        "Seed:DemoData",
+        app.Environment.IsDevelopment() || app.Environment.IsEnvironment("Testing"));
+    if (seedDemo)
     {
-        await db.Database.ExecuteSqlRawAsync(
-            """ALTER TABLE "Vehicles" ADD COLUMN IF NOT EXISTS "LastSource" character varying(64)""");
-        await db.Database.ExecuteSqlRawAsync(
-            """ALTER TABLE "Vehicles" ADD COLUMN IF NOT EXISTS "DriverName" character varying(120)""");
-        await db.Database.ExecuteSqlRawAsync(
-            """ALTER TABLE "Vehicles" ADD COLUMN IF NOT EXISTS "DriverPhone" character varying(32)""");
-        await db.Database.ExecuteSqlRawAsync(
-            """ALTER TABLE "Vehicles" ADD COLUMN IF NOT EXISTS "SellerName" character varying(120)""");
-        await db.Database.ExecuteSqlRawAsync(
-            """ALTER TABLE "Vehicles" ADD COLUMN IF NOT EXISTS "SellerPhone" character varying(32)""");
-        await db.Database.ExecuteSqlRawAsync(
-            """ALTER TABLE "Vehicles" ADD COLUMN IF NOT EXISTS "OperatorPhone" character varying(32)""");
-        await db.Database.ExecuteSqlRawAsync(
-            """ALTER TABLE "Vehicles" ADD COLUMN IF NOT EXISTS "PhotoDataUrl" text""");
-        await db.Database.ExecuteSqlRawAsync(
-            """ALTER TABLE "Vehicles" ADD COLUMN IF NOT EXISTS "DriverUserId" uuid""");
-        await db.Database.ExecuteSqlRawAsync(
-            """ALTER TABLE "Vehicles" ADD COLUMN IF NOT EXISTS "SellerUserId" uuid""");
+        await Seed.EnsureSeedAsync(db);
     }
-    await Seed.EnsureSeedAsync(db);
 }
 
 app.MapGet("/api/vehicles", async (FleetDbContext db) =>
     await db.Vehicles.AsNoTracking().OrderBy(v => v.PlateNumber).ToListAsync())
+    .RequireAuthorization()
     .WithName("ListVehicles")
     .WithTags("Fleet");
 
@@ -84,6 +71,7 @@ app.MapGet("/api/vehicles/{id:guid}", async (Guid id, FleetDbContext db) =>
     var vehicle = await db.Vehicles.AsNoTracking().FirstOrDefaultAsync(v => v.Id == id);
     return vehicle is null ? Results.NotFound() : Results.Ok(vehicle);
 })
+.RequireAuthorization()
 .WithName("GetVehicle")
 .WithTags("Fleet");
 
@@ -96,6 +84,7 @@ app.MapGet("/api/vehicles/{id:guid}/position", async (Guid id, FleetDbContext db
 
     return position is null ? Results.NotFound() : Results.Ok(position);
 })
+.RequireAuthorization()
 .WithName("GetVehiclePosition")
 .WithTags("Fleet");
 
@@ -244,7 +233,7 @@ app.MapPost("/api/vehicles/{id:guid}/positions", async (
         Longitude = request.Longitude,
         SpeedKmh = request.SpeedKmh,
         RecordedAtUtc = recordedAt,
-        Source = request.Source ?? "manual"
+        Source = request.Source ?? GpsSources.Manual
     };
 
     vehicle.LastLatitude = position.Latitude;

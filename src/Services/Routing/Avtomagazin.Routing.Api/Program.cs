@@ -22,11 +22,12 @@ var routingCs = DeploySecrets.ConnectionString(
     "Routing",
     "Host=localhost;Port=5432;Database=avtomagazin_routing;Username=avtomagazin;Password=avtomagazin");
 
+var routingTestDb = $"avtomagazin-routing-tests-{Guid.NewGuid()}";
 builder.Services.AddDbContext<RoutingDbContext>(options =>
 {
     if (builder.Environment.IsEnvironment("Testing"))
     {
-        options.UseInMemoryDatabase("avtomagazin-routing-tests");
+        options.UseInMemoryDatabase(routingTestDb);
         return;
     }
 
@@ -46,68 +47,19 @@ app.UseAvtomagazinDefaults();
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<RoutingDbContext>();
-    await db.Database.EnsureCreatedAsync();
-    if (db.Database.IsRelational())
+    await RelationalSchema.ApplyAsync(db);
+    var seedDemo = app.Configuration.GetValue(
+        "Seed:DemoData",
+        app.Environment.IsDevelopment() || app.Environment.IsEnvironment("Testing"));
+    if (seedDemo)
     {
-        await db.Database.ExecuteSqlRawAsync(
-            """
-            CREATE TABLE IF NOT EXISTS "PresenceReports" (
-                "Id" uuid NOT NULL PRIMARY KEY,
-                "StopId" uuid NOT NULL,
-                "SettlementName" character varying(200) NOT NULL,
-                "Kind" character varying(32) NOT NULL,
-                "DeviceToken" character varying(512) NOT NULL,
-                "ReportedAtUtc" timestamp with time zone NOT NULL
-            );
-            CREATE TABLE IF NOT EXISTS "Cases" (
-                "Id" uuid NOT NULL PRIMARY KEY,
-                "SettlementKey" character varying(120) NOT NULL,
-                "SettlementName" character varying(200) NOT NULL,
-                "VehicleId" uuid,
-                "Status" character varying(32) NOT NULL,
-                "ReportCount" integer NOT NULL,
-                "OpenedAtUtc" timestamp with time zone NOT NULL,
-                "UpdatedAtUtc" timestamp with time zone NOT NULL,
-                "ClosedAtUtc" timestamp with time zone
-            );
-            CREATE TABLE IF NOT EXISTS "CaseEvents" (
-                "Id" uuid NOT NULL PRIMARY KEY,
-                "CaseId" uuid NOT NULL,
-                "Kind" character varying(32) NOT NULL,
-                "Body" character varying(2000) NOT NULL,
-                "AuthorName" character varying(200),
-                "AuthorEmail" character varying(320),
-                "StopId" uuid,
-                "StopLabel" character varying(200),
-                "FromStatus" character varying(32),
-                "ToStatus" character varying(32),
-                "CreatedAtUtc" timestamp with time zone NOT NULL
-            );
-            """);
-        await db.Database.ExecuteSqlRawAsync(
-            """ALTER TABLE "Stops" ADD COLUMN IF NOT EXISTS "PhotoDataUrl" text""");
-        await db.Database.ExecuteSqlRawAsync(
-            """ALTER TABLE "EtaSnapshots" ADD COLUMN IF NOT EXISTS "DistanceKm" double precision""");
-        await db.Database.ExecuteSqlRawAsync(
-            """ALTER TABLE "CoverageVisits" ADD COLUMN IF NOT EXISTS "Skipped" boolean NOT NULL DEFAULT false""");
-        await db.Database.ExecuteSqlRawAsync(
-            """
-            CREATE TABLE IF NOT EXISTS "DriverNotes" (
-                "Id" uuid NOT NULL PRIMARY KEY,
-                "VehicleId" uuid NOT NULL,
-                "Body" character varying(500) NOT NULL,
-                "Latitude" double precision NOT NULL,
-                "Longitude" double precision NOT NULL,
-                "CreatedAtUtc" timestamp with time zone NOT NULL
-            );
-            CREATE UNIQUE INDEX IF NOT EXISTS "IX_DriverNotes_VehicleId" ON "DriverNotes" ("VehicleId");
-            """);
+        await Seed.EnsureSeedAsync(db);
     }
-    await Seed.EnsureSeedAsync(db);
 }
 
 app.MapGet("/api/routes", async (bool? catalog, RoutingDbContext db, CancellationToken ct) =>
         Results.Ok(await RouteList.BuildAsync(db, catalog == true, ct)))
+    .RequireAuthorization()
     .WithName("ListRoutes")
     .WithTags("Routing");
 
@@ -118,6 +70,7 @@ app.MapGet("/api/routes/{routeId:guid}", async (Guid routeId, RoutingDbContext d
         .FirstOrDefaultAsync(r => r.Id == routeId);
     return route is null ? Results.NotFound() : Results.Ok(route);
 })
+.RequireAuthorization()
 .WithName("GetRoute")
 .WithTags("Routing");
 
@@ -130,6 +83,7 @@ app.MapGet("/api/stops/{settlement}", async (string settlement, RoutingDbContext
 
     return Results.Ok(stops);
 })
+.RequireAuthorization()
 .WithName("FindStops")
 .WithTags("Routing");
 
@@ -149,6 +103,7 @@ app.MapGet("/api/eta", async (Guid? stopId, string? settlement, RoutingDbContext
     var items = await query.OrderBy(e => e.EstimatedArrivalUtc).Take(50).ToListAsync();
     return Results.Ok(items);
 })
+.RequireAuthorization()
 .WithName("GetEta")
 .WithTags("Routing");
 
@@ -161,6 +116,7 @@ app.MapGet("/api/driver-notes", async (RoutingDbContext db) =>
         .ToListAsync();
     return Results.Ok(items);
 })
+.RequireAuthorization()
 .WithName("ListDriverNotes")
 .WithTags("Routing");
 
@@ -502,6 +458,8 @@ app.MapPost("/api/coverage/visit", async (
         return Results.NotFound();
     }
 
+    var arrivedAt = request.ArrivedAtUtc ?? DateTimeOffset.UtcNow;
+    var onTime = ScheduleWindow.Contains(stop.PlannedArrivalUtc, arrivedAt);
     var visit = new CoverageVisit
     {
         Id = Guid.NewGuid(),
@@ -509,8 +467,8 @@ app.MapPost("/api/coverage/visit", async (
         StopId = stop.Id,
         SettlementName = stop.SettlementName,
         RegionCode = stop.RegionCode,
-        ArrivedAtUtc = request.ArrivedAtUtc ?? DateTimeOffset.UtcNow,
-        WithinScheduledWindow = request.WithinScheduledWindow
+        ArrivedAtUtc = arrivedAt,
+        WithinScheduledWindow = onTime
     };
 
     db.CoverageVisits.Add(visit);
@@ -553,7 +511,7 @@ app.MapPost("/api/stops/{stopId:guid}/arrived", async (
 
     var arrivedAt = DateTimeOffset.UtcNow;
     var skipped = request.Skipped;
-    var onTime = !skipped && ReportWindow.Contains(stop.PlannedArrivalUtc, arrivedAt);
+    var onTime = !skipped && ScheduleWindow.Contains(stop.PlannedArrivalUtc, arrivedAt);
     var visit = new CoverageVisit
     {
         Id = Guid.NewGuid(),
@@ -612,7 +570,7 @@ app.MapPost("/api/stops/{stopId:guid}/reports", async (
     }
 
     var now = DateTimeOffset.UtcNow;
-    if (!ReportWindow.Contains(stop.PlannedArrivalUtc, now))
+    if (!ScheduleWindow.Contains(stop.PlannedArrivalUtc, now))
     {
         return Results.Json(
             new { error = "report window is closed", opensAtUtc = stop.PlannedArrivalUtc.AddMinutes(-15), closesAtUtc = stop.PlannedArrivalUtc.AddHours(1) },
@@ -830,8 +788,7 @@ app.Run();
 public sealed record CoverageVisitRequest(
     Guid VehicleId,
     Guid StopId,
-    DateTimeOffset? ArrivedAtUtc,
-    bool WithinScheduledWindow);
+    DateTimeOffset? ArrivedAtUtc);
 
 public sealed record CreateRouteRequest(string Name, Guid VehicleId);
 
@@ -925,23 +882,6 @@ internal static class CaseWorkflow
         => db.Cases.AsNoTracking()
             .Include(c => c.Events.OrderByDescending(e => e.CreatedAtUtc))
             .FirstOrDefaultAsync(c => c.Id == id);
-}
-
-internal static class ReportWindow
-{
-    public static bool Contains(DateTimeOffset plannedUtc, DateTimeOffset now)
-    {
-        if (IsInside(plannedUtc, now))
-        {
-            return true;
-        }
-
-        var today = new DateTimeOffset(now.Year, now.Month, now.Day, plannedUtc.Hour, plannedUtc.Minute, 0, TimeSpan.Zero);
-        return IsInside(today, now);
-    }
-
-    private static bool IsInside(DateTimeOffset plannedUtc, DateTimeOffset now)
-        => now >= plannedUtc.AddMinutes(-15) && now <= plannedUtc.AddHours(1);
 }
 
 public partial class Program;

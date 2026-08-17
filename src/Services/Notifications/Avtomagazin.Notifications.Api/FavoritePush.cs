@@ -11,6 +11,8 @@ internal static class FavoritePush
         string settlementName,
         CancellationToken ct)
     {
+        _ = settlementName;
+
         var userIds = await db.FavoriteStops
             .AsNoTracking()
             .Where(f => f.StopId == stopId && f.UserId != null)
@@ -32,15 +34,8 @@ internal static class FavoritePush
             .Select(f => f.Device.DeviceToken)
             .ToListAsync(ct);
 
-        var legacyTokens = await db.DeviceSubscriptions
-            .AsNoTracking()
-            .Where(d => d.SettlementName == settlementName)
-            .Select(d => d.DeviceToken)
-            .ToListAsync(ct);
-
         return userTokens
             .Concat(favoriteDeviceTokens)
-            .Concat(legacyTokens)
             .Distinct()
             .ToList();
     }

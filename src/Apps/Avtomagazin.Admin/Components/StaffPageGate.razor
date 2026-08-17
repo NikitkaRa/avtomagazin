@@ -1,0 +1,95 @@
+@inject StaffSession Session
+@inject NavigationManager Nav
+@implements IDisposable
+
+@if (!_ready)
+{
+    <p class="muted">Загрузка…</p>
+}
+else if (_allowed)
+{
+    @ChildContent
+}
+else
+{
+    <p class="muted">Перенаправление…</p>
+}
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>Only admin role may view this page.</summary>
+    [Parameter] public bool RequireAdmin { get; set; }
+
+    /// <summary>Driver/seller accounts are redirected to the home drive screen.</summary>
+    [Parameter] public bool DenyVanCrew { get; set; } = true;
+
+    /// <summary>Called once after session restore when access is granted.</summary>
+    [Parameter] public EventCallback OnReady { get; set; }
+
+    private bool _ready;
+    private bool _allowed;
+    private bool _loaded;
+
+    protected override void OnInitialized()
+    {
+        Session.Changed += OnSessionChanged;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _ready)
+        {
+            return;
+        }
+
+        await BootstrapAsync();
+    }
+
+    private async Task BootstrapAsync()
+    {
+        await Session.RestoreAsync();
+        _ready = Session.IsRestored;
+
+        if (!Session.IsAuthenticated)
+        {
+            Nav.NavigateTo("/");
+            return;
+        }
+
+        if (RequireAdmin && !Session.IsAdmin)
+        {
+            Nav.NavigateTo("/");
+            return;
+        }
+
+        if (DenyVanCrew && Session.IsVanCrew)
+        {
+            Nav.NavigateTo("/");
+            return;
+        }
+
+        _allowed = true;
+
+        if (!_loaded && OnReady.HasDelegate)
+        {
+            _loaded = true;
+            await OnReady.InvokeAsync();
+        }
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void OnSessionChanged()
+    {
+        if (!_ready || Session.IsAuthenticated)
+        {
+            _ = InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        Nav.NavigateTo("/");
+    }
+
+    public void Dispose() => Session.Changed -= OnSessionChanged;
+}

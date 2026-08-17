@@ -1,3 +1,4 @@
+using Avtomagazin.Contracts;
 using Avtomagazin.Contracts.Events;
 using Avtomagazin.Fleet.Api.Data;
 using MassTransit;
@@ -32,7 +33,7 @@ public static class GpsFixApplier
             }
 
             // Live broadcast from driver/seller app wins over mock telematics.
-            var live = string.Equals(vehicle.LastSource, "driver-app", StringComparison.OrdinalIgnoreCase)
+            var live = string.Equals(vehicle.LastSource, GpsSources.DriverApp, StringComparison.OrdinalIgnoreCase)
                        && vehicle.LastSeenAtUtc > DateTimeOffset.UtcNow.AddSeconds(-90);
             if (live)
             {
@@ -47,13 +48,13 @@ public static class GpsFixApplier
                 Longitude = fix.Longitude,
                 SpeedKmh = fix.SpeedKmh,
                 RecordedAtUtc = fix.RecordedAtUtc,
-                Source = "gps-adapter"
+                Source = GpsSources.Adapter
             });
 
             vehicle.LastLatitude = fix.Latitude;
             vehicle.LastLongitude = fix.Longitude;
             vehicle.LastSeenAtUtc = fix.RecordedAtUtc;
-            vehicle.LastSource = "gps-adapter";
+            vehicle.LastSource = GpsSources.Adapter;
             applied++;
 
             await bus.Publish(new VehiclePositionUpdated(

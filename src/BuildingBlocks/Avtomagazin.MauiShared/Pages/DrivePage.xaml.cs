@@ -142,11 +142,7 @@ public partial class DrivePage : ContentPage
     {
         await _snapshot.RefreshAsync(_api.Client);
         var van = Vehicle();
-        // Prefer the operational trip (few stops) over demo heat dump on the same van.
-        var route = _snapshot.Current.Routes
-            .Where(r => van is not null && r.VehicleId == van.Id)
-            .OrderBy(r => r.Stops?.Count ?? int.MaxValue)
-            .FirstOrDefault();
+        var route = van is null ? null : RouteDto.ForVehicle(_snapshot.Current.Routes, van.Id);
 
         VanLabel.Text = van is null ? "Нет автолавки" : van.PlateNumber;
         RouteLabel.Text = van is null

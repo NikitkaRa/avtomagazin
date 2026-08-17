@@ -20,6 +20,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Avtomagazin.ApiClient\Avtomagazin.ApiClient.csproj" />
+    <ProjectReference Include="..\Avtomagazin.Contracts\Avtomagazin.Contracts.csproj" />
   </ItemGroup>
 
 </Project>

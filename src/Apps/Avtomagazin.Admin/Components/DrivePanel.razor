@@ -134,12 +134,9 @@
         var snap = await Api.GetSnapshotAsync();
         var id = Session.VehicleId;
         _vehicle = id is Guid vid
-            ? snap.Vehicles.FirstOrDefault(v => v.Id == vid) ?? snap.Vehicles.FirstOrDefault()
-            : snap.Vehicles.FirstOrDefault();
-        _route = snap.Routes
-                     .Where(r => _vehicle is not null && r.VehicleId == _vehicle.Id)
-                     .OrderBy(r => r.Stops?.Count ?? int.MaxValue)
-                     .FirstOrDefault();
+            ? snap.Vehicles.FirstOrDefault(v => v.Id == vid)
+            : null;
+        _route = _vehicle is null ? null : RouteDto.ForVehicle(snap.Routes, _vehicle.Id);
         var stops = (_route?.Stops ?? []).OrderBy(s => s.Sequence).ToList();
         _next = stops.FirstOrDefault(s => s.ArrivedAtUtc is null);
 
@@ -181,8 +178,9 @@
                 await ReloadAsync();
                 await InvokeAsync(StateHasChanged);
             }
-            catch
+            catch (Exception ex) when (ex is not OperationCanceledException)
             {
+                _status = FriendlyError(ex.Message);
             }
 
             await Task.Delay(8000, ct);
@@ -247,10 +245,18 @@
             return;
         }
 
-        await Api.IngestPositionAsync(_vehicle.Id, lat, lng, speedKmh);
-        _gpsStatus = $"В эфире · {DateTime.Now:HH:mm:ss}";
-        _status = null;
-        await ReloadAsync();
+        try
+        {
+            await Api.IngestPositionAsync(_vehicle.Id, lat, lng, speedKmh);
+            _gpsStatus = $"В эфире · {DateTime.Now:HH:mm:ss}";
+            _status = null;
+            await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            _status = FriendlyError(ex.Message);
+        }
+
         await InvokeAsync(StateHasChanged);
     }
 

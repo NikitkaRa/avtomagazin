@@ -215,37 +215,29 @@ public static class Seed
     }
 
     /// <summary>
-    /// Demo driver (Гродно) trip for today — timings match ~30 km/h from the seeded van near Grodno.
+    /// Demo driver (Гродно) trip — timings match ~30 km/h from the seeded van near Grodno.
+    /// Existing rows are left alone so a restart cannot teleport stops or rewind the day.
     /// </summary>
     private static async Task EnsureGrodnoRouteAsync(RoutingDbContext db)
     {
         var routeId = Guid.Parse("cccccccc-cccc-cccc-cccc-cccccccccccc");
-        var vehicleId = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+        if (await db.Routes.AnyAsync(r => r.Id == routeId))
+        {
+            return;
+        }
+
         var now = DateTimeOffset.UtcNow;
-
-        var route = await db.Routes.Include(r => r.Stops).FirstOrDefaultAsync(r => r.Id == routeId);
-        if (route is null)
+        db.Routes.Add(new TradeRoute
         {
-            route = new TradeRoute
-            {
-                Id = routeId,
-                Name = "Гродно — окраинные деревни",
-                VehicleId = vehicleId
-            };
-            db.Routes.Add(route);
-            await db.SaveChangesAsync();
-        }
-        else
-        {
-            route.Name = "Гродно — окраинные деревни";
-            route.VehicleId = vehicleId;
-        }
-
-        await UpsertStopAsync(db, routeId, Guid.Parse("dddddddd-dddd-dddd-dddd-ddddddddddd1"), 1,
+            Id = routeId,
+            Name = "Гродно — окраинные деревни",
+            VehicleId = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
+        });
+        InsertStop(db, routeId, Guid.Parse("dddddddd-dddd-dddd-dddd-ddddddddddd1"), 1,
             "Индура", "BY-HR", 53.4600, 23.9500, now.AddMinutes(45));
-        await UpsertStopAsync(db, routeId, Guid.Parse("dddddddd-dddd-dddd-dddd-ddddddddddd2"), 2,
+        InsertStop(db, routeId, Guid.Parse("dddddddd-dddd-dddd-dddd-ddddddddddd2"), 2,
             "Озёры", "BY-HR", 53.7200, 24.1800, now.AddMinutes(100));
-        await UpsertStopAsync(db, routeId, Guid.Parse("dddddddd-dddd-dddd-dddd-ddddddddddd3"), 3,
+        InsertStop(db, routeId, Guid.Parse("dddddddd-dddd-dddd-dddd-ddddddddddd3"), 3,
             "Скидель", "BY-HR", 53.5900, 24.2500, now.AddMinutes(145));
         await db.SaveChangesAsync();
     }
@@ -253,58 +245,35 @@ public static class Seed
     private static async Task EnsureBelarusHeatRouteAsync(RoutingDbContext db)
     {
         var routeId = DemoHeatCatalog.HeatRouteId;
-        var route = await db.Routes.Include(r => r.Stops).FirstOrDefaultAsync(r => r.Id == routeId);
-        if (route is null)
+        if (await db.Routes.AnyAsync(r => r.Id == routeId))
         {
-            route = new TradeRoute
-            {
-                Id = routeId,
-                Name = "Беларусь — избранное",
-                VehicleId = DemoHeatCatalog.HeatVehicleId
-            };
-            db.Routes.Add(route);
-            await db.SaveChangesAsync();
+            return;
         }
-        else if (!string.Equals(route.Name, "Беларусь — избранное", StringComparison.Ordinal)
-                 || route.VehicleId != DemoHeatCatalog.HeatVehicleId)
+
+        db.Routes.Add(new TradeRoute
         {
-            route.Name = "Беларусь — избранное";
-            route.VehicleId = DemoHeatCatalog.HeatVehicleId;
-        }
+            Id = routeId,
+            Name = "Беларусь — избранное",
+            VehicleId = DemoHeatCatalog.HeatVehicleId
+        });
 
         var now = DateTimeOffset.UtcNow;
         var places = DemoHeatCatalog.Places;
         for (var i = 0; i < places.Count; i++)
         {
             var place = places[i];
-            var stopId = DemoHeatCatalog.StopId(i);
             var jitterLat = ((i % 7) - 3) * 0.012;
             var jitterLng = ((i % 5) - 2) * 0.015;
-            var stop = await db.Stops.FirstOrDefaultAsync(s => s.Id == stopId);
-            if (stop is null)
-            {
-                db.Stops.Add(new RouteStop
-                {
-                    Id = stopId,
-                    RouteId = routeId,
-                    Sequence = i + 1,
-                    SettlementName = place.Name,
-                    RegionCode = place.Region,
-                    Latitude = place.Lat + jitterLat,
-                    Longitude = place.Lng + jitterLng,
-                    PlannedArrivalUtc = now.AddMinutes(20 + i * 12)
-                });
-            }
-            else
-            {
-                stop.RouteId = routeId;
-                stop.Sequence = i + 1;
-                stop.SettlementName = place.Name;
-                stop.RegionCode = place.Region;
-                stop.Latitude = place.Lat + jitterLat;
-                stop.Longitude = place.Lng + jitterLng;
-                stop.PlannedArrivalUtc = now.AddMinutes(20 + i * 12);
-            }
+            InsertStop(
+                db,
+                routeId,
+                DemoHeatCatalog.StopId(i),
+                i + 1,
+                place.Name,
+                place.Region,
+                place.Lat + jitterLat,
+                place.Lng + jitterLng,
+                now.AddMinutes(20 + i * 12));
         }
 
         await db.SaveChangesAsync();
@@ -313,33 +282,23 @@ public static class Seed
     private static async Task EnsurePukhovichiRouteAsync(RoutingDbContext db)
     {
         var routeId = Guid.Parse("eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee");
-        var vehicleId = Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
+        if (await db.Routes.AnyAsync(r => r.Id == routeId))
+        {
+            return;
+        }
+
         var now = DateTimeOffset.UtcNow;
-
-        var route = await db.Routes.Include(r => r.Stops).FirstOrDefaultAsync(r => r.Id == routeId);
-        if (route is null)
+        db.Routes.Add(new TradeRoute
         {
-            route = new TradeRoute
-            {
-                Id = routeId,
-                Name = "Пуховичи — Озеричино",
-                VehicleId = vehicleId
-            };
-            db.Routes.Add(route);
-            await db.SaveChangesAsync();
-        }
-        else if (route.VehicleId != vehicleId || route.Name != "Пуховичи — Озеричино")
-        {
-            route.VehicleId = vehicleId;
-            route.Name = "Пуховичи — Озеричино";
-        }
-
-        // Chronological order for the day (nearest first from the seeded van in Озеричино).
-        await UpsertStopAsync(db, routeId, Guid.Parse("dddddddd-dddd-dddd-dddd-ddddddddddd4"), 1,
+            Id = routeId,
+            Name = "Пуховичи — Озеричино",
+            VehicleId = Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")
+        });
+        InsertStop(db, routeId, Guid.Parse("dddddddd-dddd-dddd-dddd-ddddddddddd4"), 1,
             "Озеричино", "BY-MI", 53.5774, 27.7472, now.AddMinutes(15));
-        await UpsertStopAsync(db, routeId, Guid.Parse("dddddddd-dddd-dddd-dddd-ddddddddddd5"), 2,
+        InsertStop(db, routeId, Guid.Parse("dddddddd-dddd-dddd-dddd-ddddddddddd5"), 2,
             "Правдинский", "BY-MI", 53.5085, 27.8372, now.AddMinutes(50));
-        await UpsertStopAsync(db, routeId, Guid.Parse("dddddddd-dddd-dddd-dddd-ddddddddddd6"), 3,
+        InsertStop(db, routeId, Guid.Parse("dddddddd-dddd-dddd-dddd-ddddddddddd6"), 3,
             "Дукора", "BY-MI", 53.6786, 27.9525, now.AddMinutes(95));
         await db.SaveChangesAsync();
     }
@@ -379,75 +338,31 @@ public static class Seed
         string name,
         LoopStop[] stops)
     {
-        var route = await db.Routes.Include(r => r.Stops).FirstOrDefaultAsync(r => r.Id == routeId);
-        if (route is null)
+        if (await db.Routes.AnyAsync(r => r.Id == routeId))
         {
-            route = new TradeRoute
-            {
-                Id = routeId,
-                Name = name,
-                VehicleId = vehicleId
-            };
-            db.Routes.Add(route);
-            await db.SaveChangesAsync();
+            return;
         }
-        else
+
+        db.Routes.Add(new TradeRoute
         {
-            route.Name = name;
-            route.VehicleId = vehicleId;
-        }
+            Id = routeId,
+            Name = name,
+            VehicleId = vehicleId
+        });
 
         foreach (var stop in stops)
         {
-            await UpsertStopByIdAsync(
-                db, routeId, stop.Id, stop.Sequence, stop.Name, "BY-MI", stop.Lat, stop.Lng, stop.PlannedUtc);
+            InsertStop(db, routeId, stop.Id, stop.Sequence, stop.Name, "BY-MI", stop.Lat, stop.Lng, stop.PlannedUtc);
             if (stop.Arrived)
             {
-                await UpsertVisitAsync(db, vehicleId, stop.Id, stop.Name, stop.PlannedUtc.AddMinutes(-8));
+                InsertVisit(db, vehicleId, stop.Id, stop.Name, stop.PlannedUtc.AddMinutes(-8));
             }
         }
 
         await db.SaveChangesAsync();
     }
 
-    private static async Task UpsertStopByIdAsync(
-        RoutingDbContext db,
-        Guid routeId,
-        Guid stopId,
-        int sequence,
-        string settlement,
-        string region,
-        double lat,
-        double lng,
-        DateTimeOffset plannedUtc)
-    {
-        var stop = await db.Stops.FirstOrDefaultAsync(s => s.Id == stopId);
-        if (stop is null)
-        {
-            db.Stops.Add(new RouteStop
-            {
-                Id = stopId,
-                RouteId = routeId,
-                Sequence = sequence,
-                SettlementName = settlement,
-                RegionCode = region,
-                Latitude = lat,
-                Longitude = lng,
-                PlannedArrivalUtc = plannedUtc
-            });
-            return;
-        }
-
-        stop.RouteId = routeId;
-        stop.Sequence = sequence;
-        stop.SettlementName = settlement;
-        stop.RegionCode = region;
-        stop.Latitude = lat;
-        stop.Longitude = lng;
-        stop.PlannedArrivalUtc = plannedUtc;
-    }
-
-    private static async Task UpsertVisitAsync(
+    private static void InsertVisit(
         RoutingDbContext db,
         Guid vehicleId,
         Guid stopId,
@@ -455,27 +370,21 @@ public static class Seed
         DateTimeOffset arrivedAtUtc)
     {
         var visitId = Guid.Parse($"f2100000-0000-4000-8000-{stopId.ToString("N")[^12..]}");
-        var visit = await db.CoverageVisits.FirstOrDefaultAsync(v => v.Id == visitId);
-        if (visit is null)
+        if (db.CoverageVisits.Find(visitId) is not null)
         {
-            db.CoverageVisits.Add(new CoverageVisit
-            {
-                Id = visitId,
-                VehicleId = vehicleId,
-                StopId = stopId,
-                SettlementName = settlement,
-                RegionCode = "BY-MI",
-                ArrivedAtUtc = arrivedAtUtc,
-                WithinScheduledWindow = true
-            });
             return;
         }
 
-        visit.VehicleId = vehicleId;
-        visit.StopId = stopId;
-        visit.SettlementName = settlement;
-        visit.ArrivedAtUtc = arrivedAtUtc;
-        visit.WithinScheduledWindow = true;
+        db.CoverageVisits.Add(new CoverageVisit
+        {
+            Id = visitId,
+            VehicleId = vehicleId,
+            StopId = stopId,
+            SettlementName = settlement,
+            RegionCode = "BY-MI",
+            ArrivedAtUtc = arrivedAtUtc,
+            WithinScheduledWindow = true
+        });
     }
 
     private sealed record LoopStop(
@@ -487,7 +396,7 @@ public static class Seed
         DateTimeOffset PlannedUtc,
         bool Arrived);
 
-    private static async Task UpsertStopAsync(
+    private static void InsertStop(
         RoutingDbContext db,
         Guid routeId,
         Guid stopId,
@@ -498,30 +407,21 @@ public static class Seed
         double lng,
         DateTimeOffset plannedUtc)
     {
-        var stop = await db.Stops.FirstOrDefaultAsync(s => s.Id == stopId)
-                   ?? await db.Stops.FirstOrDefaultAsync(s => s.SettlementName == settlement);
-        if (stop is null)
+        if (db.Stops.Find(stopId) is not null)
         {
-            db.Stops.Add(new RouteStop
-            {
-                Id = stopId,
-                RouteId = routeId,
-                Sequence = sequence,
-                SettlementName = settlement,
-                RegionCode = region,
-                Latitude = lat,
-                Longitude = lng,
-                PlannedArrivalUtc = plannedUtc
-            });
             return;
         }
 
-        stop.RouteId = routeId;
-        stop.Sequence = sequence;
-        stop.SettlementName = settlement;
-        stop.RegionCode = region;
-        stop.Latitude = lat;
-        stop.Longitude = lng;
-        stop.PlannedArrivalUtc = plannedUtc;
+        db.Stops.Add(new RouteStop
+        {
+            Id = stopId,
+            RouteId = routeId,
+            Sequence = sequence,
+            SettlementName = settlement,
+            RegionCode = region,
+            Latitude = lat,
+            Longitude = lng,
+            PlannedArrivalUtc = plannedUtc
+        });
     }
 }
