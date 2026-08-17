@@ -82,7 +82,9 @@ public static class Seed
             "+375291110011",
             "Анна Коваль",
             "+375291110012",
-            "+375152600100");
+            "+375152600100",
+            Guid.Parse("66666666-6666-6666-6666-666666666666"),
+            null);
         await UpsertVehicleAsync(
             db,
             Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"),
@@ -94,7 +96,9 @@ public static class Seed
             "+375297770021",
             "Мария Савич",
             "+375297770022",
-            "+375171600200");
+            "+375171600200",
+            Guid.Parse("22222222-2222-2222-2222-222222222222"),
+            Guid.Parse("55555555-5555-5555-5555-555555555555"));
         await UpsertVehicleAsync(
             db,
             Guid.Parse("f2000000-0000-4000-8000-000000000001"),
@@ -133,7 +137,9 @@ public static class Seed
         string driverPhone,
         string sellerName,
         string sellerPhone,
-        string operatorPhone)
+        string operatorPhone,
+        Guid? driverUserId = null,
+        Guid? sellerUserId = null)
     {
         if (await db.Vehicles.AnyAsync(v => v.Id == id))
         {
@@ -150,6 +156,8 @@ public static class Seed
             SellerName = sellerName,
             SellerPhone = sellerPhone,
             OperatorPhone = operatorPhone,
+            DriverUserId = driverUserId,
+            SellerUserId = sellerUserId,
             LastLatitude = lat,
             LastLongitude = lng,
             LastSeenAtUtc = DateTimeOffset.UtcNow,

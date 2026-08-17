@@ -76,7 +76,6 @@ public static class VehicleEndpoints
                     PhotoDataUrl = photo,
                     IsActive = request.IsActive ?? true
                 };
-                VehicleCrew.ApplySnapshot(vehicle, request);
 
                 db.Vehicles.Add(vehicle);
                 await db.SaveChangesAsync();
@@ -121,7 +120,6 @@ public static class VehicleEndpoints
 
                 vehicle.PlateNumber = plate;
                 vehicle.OperatorName = request.OperatorName.Trim();
-                VehicleCrew.ApplySnapshot(vehicle, request);
                 vehicle.OperatorPhone = VehiclePhotos.TrimOrNull(request.OperatorPhone);
                 if (request.ClearPhoto == true || request.PhotoDataUrl is not null)
                 {

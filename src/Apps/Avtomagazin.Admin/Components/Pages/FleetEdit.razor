@@ -293,26 +293,13 @@ else
         _busy = true;
         try
         {
-            var driver = _driverUserId == Guid.Empty ? null : _staff.FirstOrDefault(s => s.Id == _driverUserId);
-            var seller = _sellerUserId == Guid.Empty ? null : _staff.FirstOrDefault(s => s.Id == _sellerUserId);
-            _driverName = driver?.DisplayName ?? "";
-            _sellerName = seller?.DisplayName ?? "";
-            _driverPhone = "";
-            _sellerPhone = "";
-
             var request = new UpsertVehicleRequest(
                 _plate,
                 _operator,
-                string.IsNullOrWhiteSpace(_driverName) ? null : _driverName,
-                null,
-                string.IsNullOrWhiteSpace(_sellerName) ? null : _sellerName,
-                null,
-                string.IsNullOrWhiteSpace(_operatorPhone) ? null : _operatorPhone,
-                _driverUserId == Guid.Empty ? null : _driverUserId,
-                _sellerUserId == Guid.Empty ? null : _sellerUserId,
-                _photoDirty && !_clearPhoto ? _photoDataUrl : null,
-                _clearPhoto,
-                _isActiveText == "true");
+                OperatorPhone: string.IsNullOrWhiteSpace(_operatorPhone) ? null : _operatorPhone,
+                PhotoDataUrl: _photoDirty && !_clearPhoto ? _photoDataUrl : null,
+                ClearPhoto: _clearPhoto,
+                IsActive: _isActiveText == "true");
 
             VehicleDto? saved;
             if (IsNew)

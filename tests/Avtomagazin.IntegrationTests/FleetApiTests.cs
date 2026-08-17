@@ -130,9 +130,9 @@ public class FleetApiTests : IClassFixture<FleetApiFactory>
     }
 
     [Fact]
-    public async Task Create_with_driver_user_snapshots_name_and_contacts_patch_ignored()
+    public async Task Upsert_ignores_client_crew_assignment()
     {
-        var driverUserId = Guid.NewGuid();
+        var fakeDriver = Guid.NewGuid();
         var plate = $"{Random.Shared.Next(1000, 9999)} WW-{Random.Shared.Next(0, 9)}";
         using var client = TestJwt.Client(_factory, Roles.Operator);
 
@@ -140,57 +140,86 @@ public class FleetApiTests : IClassFixture<FleetApiFactory>
         {
             plateNumber = plate,
             operatorName = "Райпо",
-            driverUserId = driverUserId,
+            driverUserId = fakeDriver,
             driverName = "Иван Водитель",
             driverPhone = "+375291111111"
         });
         Assert.Equal(HttpStatusCode.Created, create.StatusCode);
         using var created = JsonDocument.Parse(await create.Content.ReadAsStringAsync());
         var id = created.RootElement.GetProperty("id").GetGuid();
-        Assert.Equal(driverUserId, created.RootElement.GetProperty("driverUserId").GetGuid());
-        Assert.Equal("Иван Водитель", created.RootElement.GetProperty("driverName").GetString());
+        Assert.Equal(JsonValueKind.Null, created.RootElement.GetProperty("driverUserId").ValueKind);
+        Assert.Equal(JsonValueKind.Null, created.RootElement.GetProperty("driverName").ValueKind);
 
-        var patch = await client.PatchAsJsonAsync($"/api/vehicles/{id}/contacts", new
+        var update = await client.PutAsJsonAsync($"/api/vehicles/{id}", new
         {
-            driverName = "Хакер",
-            driverPhone = "+375290000000",
-            sellerName = "Продавец",
-            sellerPhone = "+375292222222",
-            operatorPhone = "+375293333333"
+            plateNumber = plate,
+            operatorName = "Райпо",
+            driverUserId = fakeDriver,
+            driverName = "Не должно записаться"
         });
-        Assert.Equal(HttpStatusCode.OK, patch.StatusCode);
-        using var patched = JsonDocument.Parse(await patch.Content.ReadAsStringAsync());
-        Assert.Equal("Иван Водитель", patched.RootElement.GetProperty("driverName").GetString());
-        Assert.Equal("+375291111111", patched.RootElement.GetProperty("driverPhone").GetString());
-        Assert.Equal("Продавец", patched.RootElement.GetProperty("sellerName").GetString());
-        Assert.Equal("+375293333333", patched.RootElement.GetProperty("operatorPhone").GetString());
+        Assert.Equal(HttpStatusCode.OK, update.StatusCode);
+        using var updated = JsonDocument.Parse(await update.Content.ReadAsStringAsync());
+        Assert.Equal(JsonValueKind.Null, updated.RootElement.GetProperty("driverUserId").ValueKind);
+        Assert.Equal(JsonValueKind.Null, updated.RootElement.GetProperty("driverName").ValueKind);
     }
 
     [Fact]
-    public async Task Update_clearing_driver_user_clears_snapshot()
+    public async Task Contacts_patch_sets_names_when_seat_is_unassigned()
     {
         var plate = $"{Random.Shared.Next(1000, 9999)} VV-{Random.Shared.Next(0, 9)}";
         using var client = TestJwt.Client(_factory, Roles.Operator);
         var create = await client.PostAsJsonAsync("/api/vehicles", new
         {
             plateNumber = plate,
-            operatorName = "Райпо",
-            driverUserId = Guid.NewGuid(),
-            driverName = "Был"
+            operatorName = "Райпо"
         });
         using var created = JsonDocument.Parse(await create.Content.ReadAsStringAsync());
         var id = created.RootElement.GetProperty("id").GetGuid();
 
-        var update = await client.PutAsJsonAsync($"/api/vehicles/{id}", new
+        var patch = await client.PatchAsJsonAsync($"/api/vehicles/{id}/contacts", new
         {
-            plateNumber = plate,
-            operatorName = "Райпо",
+            driverName = "Иван",
+            driverPhone = "+375291111111",
+            sellerName = "Продавец",
+            sellerPhone = "+375292222222",
+            operatorPhone = "+375293333333"
+        });
+        Assert.Equal(HttpStatusCode.OK, patch.StatusCode);
+        using var patched = JsonDocument.Parse(await patch.Content.ReadAsStringAsync());
+        Assert.Equal("Иван", patched.RootElement.GetProperty("driverName").GetString());
+        Assert.Equal("+375291111111", patched.RootElement.GetProperty("driverPhone").GetString());
+        Assert.Equal("Продавец", patched.RootElement.GetProperty("sellerName").GetString());
+        Assert.Equal("+375293333333", patched.RootElement.GetProperty("operatorPhone").GetString());
+    }
+
+    [Fact]
+    public async Task Put_and_contacts_patch_do_not_overwrite_assigned_crew()
+    {
+        using var client = TestJwt.Client(_factory, Roles.Operator);
+        var before = await client.GetFromJsonAsync<JsonElement>($"/api/vehicles/{TestJwt.GrodnoVan}");
+        var driverId = before.GetProperty("driverUserId").GetGuid();
+        var driverName = before.GetProperty("driverName").GetString();
+
+        var update = await client.PutAsJsonAsync($"/api/vehicles/{TestJwt.GrodnoVan}", new
+        {
+            plateNumber = "1234 AB-7",
+            operatorName = "Гродненское райпо",
             driverUserId = (Guid?)null,
-            driverName = "Не должно остаться"
+            driverName = "Хакер"
         });
         Assert.Equal(HttpStatusCode.OK, update.StatusCode);
         using var updated = JsonDocument.Parse(await update.Content.ReadAsStringAsync());
-        Assert.Equal(JsonValueKind.Null, updated.RootElement.GetProperty("driverUserId").ValueKind);
-        Assert.Equal(JsonValueKind.Null, updated.RootElement.GetProperty("driverName").ValueKind);
+        Assert.Equal(driverId, updated.RootElement.GetProperty("driverUserId").GetGuid());
+        Assert.Equal(driverName, updated.RootElement.GetProperty("driverName").GetString());
+
+        var patch = await client.PatchAsJsonAsync($"/api/vehicles/{TestJwt.GrodnoVan}/contacts", new
+        {
+            driverName = "Хакер",
+            driverPhone = "+375290000000"
+        });
+        Assert.Equal(HttpStatusCode.OK, patch.StatusCode);
+        using var patched = JsonDocument.Parse(await patch.Content.ReadAsStringAsync());
+        Assert.Equal(driverName, patched.RootElement.GetProperty("driverName").GetString());
+        Assert.Equal("+375291110011", patched.RootElement.GetProperty("driverPhone").GetString());
     }
 }
