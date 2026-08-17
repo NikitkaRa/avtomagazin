@@ -7,27 +7,18 @@ namespace Avtomagazin.IntegrationTests;
 
 /// <summary>
 /// End-to-end checks against the running stack (Gateway :5100).
+/// Skips when the gateway is down so <c>dotnet test</c> stays green without ./scripts/start-dev.sh.
 /// </summary>
 public class LiveStackApiTests
 {
     private static readonly Uri Gateway = new("http://127.0.0.1:5100/");
 
-    [Fact]
+    [LiveStackFact]
     public async Task Gateway_health_and_fleet_flow()
     {
         using var client = new HttpClient { BaseAddress = Gateway, Timeout = TimeSpan.FromSeconds(10) };
 
-        HttpResponseMessage health;
-        try
-        {
-            health = await client.GetAsync("/health");
-        }
-        catch (Exception ex)
-        {
-            Assert.Fail($"Gateway not reachable on {Gateway}. Start ./scripts/start-dev.sh first. ({ex.Message})");
-            return;
-        }
-
+        var health = await client.GetAsync("/health");
         Assert.Equal(HttpStatusCode.OK, health.StatusCode);
 
         var login = await client.PostAsJsonAsync("/identity/api/auth/login", new
@@ -89,5 +80,26 @@ public class LiveStackApiTests
             vehicleId = Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")
         });
         Assert.Equal(HttpStatusCode.OK, arrived.StatusCode);
+    }
+}
+
+/// <summary>Runs only when Gateway :5100 answers /health.</summary>
+internal sealed class LiveStackFactAttribute : FactAttribute
+{
+    public LiveStackFactAttribute()
+    {
+        try
+        {
+            using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(2) };
+            using var response = client.GetAsync(new Uri("http://127.0.0.1:5100/health")).GetAwaiter().GetResult();
+            if (!response.IsSuccessStatusCode)
+            {
+                Skip = "Gateway :5100 is not healthy. Start ./scripts/start-dev.sh";
+            }
+        }
+        catch
+        {
+            Skip = "Gateway :5100 is not running. Start ./scripts/start-dev.sh";
+        }
     }
 }

@@ -155,9 +155,10 @@ else
         {
             _staff = await Api.GetStaffAsync();
         }
-        catch
+        catch (Exception ex)
         {
             _staff = [];
+            _error = $"Не удалось загрузить сотрудников: {ex.Message}";
         }
 
         if (!IsNew)
@@ -311,7 +312,7 @@ else
                     return;
                 }
 
-                await SyncDriverAssignmentAsync(saved.Id);
+                _ = await SyncDriverAssignmentAsync(saved.Id);
                 Nav.NavigateTo($"fleet/{saved.Id}");
                 return;
             }
@@ -323,7 +324,11 @@ else
                 return;
             }
 
-            await SyncDriverAssignmentAsync(saved.Id);
+            if (!await SyncDriverAssignmentAsync(saved.Id))
+            {
+                return;
+            }
+
             _plate = saved.PlateNumber;
             _photoDataUrl = saved.PhotoDataUrl;
             _clearPhoto = false;
@@ -340,7 +345,7 @@ else
         }
     }
 
-    private async Task SyncDriverAssignmentAsync(Guid vehicleId)
+    private async Task<bool> SyncDriverAssignmentAsync(Guid vehicleId)
     {
         try
         {
@@ -364,10 +369,12 @@ else
 
             _assignedDriverUserId = _driverUserId;
             _assignedSellerUserId = _sellerUserId;
+            return true;
         }
         catch (Exception ex)
         {
             _error = $"Автолавка сохранена, но назначение экипажа: {ex.Message}";
+            return false;
         }
     }
 }

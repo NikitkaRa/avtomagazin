@@ -6,7 +6,7 @@ namespace Avtomagazin.MauiShared;
 public partial class DrivePage : ContentPage
 {
     private const double WeakGpsMeters = 50;
-    private const double OnSiteMeters = 150;
+    private bool _trackerWanted;
     private static readonly TimeSpan SlowRefresh = TimeSpan.FromSeconds(3.5);
 
     private readonly Session _session;
@@ -48,12 +48,17 @@ public partial class DrivePage : ContentPage
         _poll.Tick -= OnTick;
         _poll.Tick += OnTick;
         _poll.Start();
+        if (_trackerWanted)
+        {
+            await StartTrackerAsync();
+        }
     }
 
     protected override void OnDisappearing()
     {
         Connectivity.ConnectivityChanged -= OnConnectivityChanged;
         _poll?.Stop();
+        PauseBroadcast();
         base.OnDisappearing();
     }
 
@@ -173,9 +178,14 @@ public partial class DrivePage : ContentPage
         }
 
         var myNote = _snapshot.ActiveNotes().FirstOrDefault(n => van is not null && n.VehicleId == van.Id);
-        if (myNote is not null)
+        if (_snapshot.Current.NotesUnavailable && myNote is null)
         {
-            NoteStatus.Text = $"Сейчас: «{myNote.Body}» · {myNote.CreatedAtUtc.ToLocalTime():HH:mm}";
+            NoteStatus.Text = "Заметки недоступны";
+            NoteStatus.TextColor = Color.FromArgb("#F0C7B0");
+        }
+        else if (myNote is not null)
+        {
+            NoteStatus.Text = $"Сейчас: «{myNote.Body}» · {BelarusTime.Clock(myNote.CreatedAtUtc)}";
             NoteStatus.TextColor = Color.FromArgb("#7BC9A0");
         }
         else if (_hasActiveNote)
@@ -291,7 +301,7 @@ public partial class DrivePage : ContentPage
         }
 
         var meters = GeoMath.DistanceMeters(lat, lng, _nextStop.Latitude, _nextStop.Longitude);
-        var onSite = meters <= OnSiteMeters;
+        var onSite = GeoFence.IsOnSite(lat, lng, _nextStop.Latitude, _nextStop.Longitude);
         NextDistance.IsVisible = true;
         NextDistance.Text = onSite
             ? "Вы на точке"
@@ -408,7 +418,7 @@ public partial class DrivePage : ContentPage
         _busy = true;
         try
         {
-            await _api.Client.ArriveAtStopAsync(_nextStop.Id, van.Id, skipped);
+            await _api.Client.ArriveAtStopAsync(_nextStop.Id, van.Id, skipped, _meLat, _meLng);
             RouteStatus.TextColor = Color.FromArgb("#3DBA7A");
             RouteStatus.Text = skipped
                 ? $"Пропущено: {_nextStop.SettlementName}"
@@ -418,7 +428,7 @@ public partial class DrivePage : ContentPage
         catch (Exception ex)
         {
             RouteStatus.TextColor = Color.FromArgb("#F0C7B0");
-            RouteStatus.Text = FriendlyError(ex);
+            RouteStatus.Text = ApiErrors.Friendly(ex);
             PaintLinkBanner();
         }
         finally
@@ -466,6 +476,7 @@ public partial class DrivePage : ContentPage
         }
 
         _gpsLive = true;
+        _trackerWanted = true;
         _gpsAccuracyM = null;
         _lastGpsAt = null;
         SetTrackerSwitch(true);
@@ -486,11 +497,17 @@ public partial class DrivePage : ContentPage
         PaintLinkBanner();
     }
 
-    private void StopTracker()
+    private void PauseBroadcast()
     {
         _broadcast?.Cancel();
         _broadcast = null;
         _gpsLive = false;
+    }
+
+    private void StopTracker()
+    {
+        _trackerWanted = false;
+        PauseBroadcast();
         _gpsAccuracyM = null;
         _lastGpsAt = null;
         SetTrackerSwitch(false);
@@ -558,8 +575,8 @@ public partial class DrivePage : ContentPage
                             var acc = point.Value.Acc;
                             GpsStatus.TextColor = Color.FromArgb("#3DBA7A");
                             GpsStatus.Text = acc is double a
-                                ? $"В эфире · ±{a:0} м · {DateTime.Now:HH:mm:ss}"
-                                : $"В эфире · {DateTime.Now:HH:mm:ss}";
+                                ? $"В эфире · ±{a:0} м · {BelarusTime.ToMinsk(DateTimeOffset.UtcNow):HH:mm:ss}"
+                                : $"В эфире · {BelarusTime.ToMinsk(DateTimeOffset.UtcNow):HH:mm:ss}";
                             PaintLinkBanner();
                             PaintProximity();
                         });
@@ -574,7 +591,7 @@ public partial class DrivePage : ContentPage
                     MainThread.BeginInvokeOnMainThread(() =>
                     {
                         GpsStatus.TextColor = Color.FromArgb("#F0C7B0");
-                        GpsStatus.Text = FriendlyError(ex);
+                        GpsStatus.Text = ApiErrors.Friendly(ex);
                         PaintLinkBanner();
                     });
                 }
@@ -655,7 +672,7 @@ public partial class DrivePage : ContentPage
         catch (Exception ex)
         {
             NoteStatus.TextColor = Color.FromArgb("#F0C7B0");
-            NoteStatus.Text = FriendlyError(ex);
+            NoteStatus.Text = ApiErrors.Friendly(ex);
             PaintLinkBanner();
         }
         finally
@@ -721,14 +738,14 @@ public partial class DrivePage : ContentPage
             await _api.Client.PostDriverNoteAsync(new PostDriverNoteRequest(van.Id, body, lat, lng));
             NoteEntry.Text = body;
             NoteStatus.TextColor = Color.FromArgb("#3DBA7A");
-            NoteStatus.Text = $"Отправлено диспетчеру · {DateTime.Now:HH:mm}";
+            NoteStatus.Text = $"Отправлено диспетчеру · {BelarusTime.Clock(DateTimeOffset.UtcNow)}";
             _hasActiveNote = true;
             await ReloadAsync();
         }
         catch (Exception ex)
         {
             NoteStatus.TextColor = Color.FromArgb("#F0C7B0");
-            NoteStatus.Text = FriendlyError(ex);
+            NoteStatus.Text = ApiErrors.Friendly(ex);
             PaintLinkBanner();
         }
         finally
@@ -761,27 +778,6 @@ public partial class DrivePage : ContentPage
         }
 
         throw new InvalidOperationException("Нет координат — включите GPS");
-    }
-
-    private static string FriendlyError(Exception ex)
-    {
-        if (ex is SessionExpiredException)
-        {
-            return "Сессия истекла — войдите снова";
-        }
-
-        var msg = ex.Message;
-        if (msg.Contains("502", StringComparison.Ordinal) || msg.Contains("Bad Gateway", StringComparison.OrdinalIgnoreCase))
-        {
-            return "Сервер временно недоступен";
-        }
-
-        if (msg.Contains("401 (", StringComparison.Ordinal))
-        {
-            return "Сессия истекла — войдите снова";
-        }
-
-        return msg.Length > 120 ? msg[..120] + "…" : msg;
     }
 
     private VehicleDto? Vehicle()

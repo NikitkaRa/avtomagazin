@@ -48,7 +48,7 @@
         <tr>
             <td>@c.SettlementName</td>
             <td>@c.RegionCode</td>
-            <td>@c.ArrivedAtUtc.ToLocalTime().ToString("dd.MM HH:mm")</td>
+            <td>@BelarusTime.DateClock(c.ArrivedAtUtc)</td>
             <td>@(c.WithinScheduledWindow ? "да" : "нет")</td>
         </tr>
     }

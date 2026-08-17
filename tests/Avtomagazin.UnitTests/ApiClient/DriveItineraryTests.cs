@@ -1,4 +1,5 @@
 using Avtomagazin.ApiClient;
+using Avtomagazin.Contracts;
 
 namespace Avtomagazin.UnitTests.ApiClient;
 
@@ -26,9 +27,9 @@ public class DriveItineraryTests
 
         Assert.Equal(second.Id, trip.Next?.Id);
         Assert.Equal("Б", trip.NextTitle);
-        Assert.Equal(first.PlannedArrivalUtc.ToLocalTime().ToString("HH:mm"), trip.Rows[0].Time);
+        Assert.Equal(BelarusTime.Clock(first.PlannedArrivalUtc), trip.Rows[0].Time);
         Assert.True(trip.Rows[0].Done);
-        Assert.Equal("был " + first.ArrivedAtUtc!.Value.ToLocalTime().ToString("HH:mm"), trip.Rows[0].Status);
+        Assert.Equal("был " + BelarusTime.Clock(first.ArrivedAtUtc!.Value), trip.Rows[0].Status);
         Assert.True(trip.Rows[1].IsNext);
         Assert.Equal("сейчас", trip.Rows[1].Status);
         Assert.False(trip.Rows[2].Done);
@@ -72,7 +73,7 @@ public class DriveItineraryTests
         var onTime = DriveItinerary.DelayMeta(stop, stop.PlannedArrivalUtc.AddSeconds(30));
         var late = DriveItinerary.DelayMeta(stop, stop.PlannedArrivalUtc.AddMinutes(12));
 
-        Assert.Equal(stop.PlannedArrivalUtc.ToLocalTime().ToString("HH:mm"), onTime);
+        Assert.Equal(BelarusTime.Clock(stop.PlannedArrivalUtc), onTime);
         Assert.Contains("опоздание 12 мин", late, StringComparison.Ordinal);
     }
 

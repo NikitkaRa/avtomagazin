@@ -15,6 +15,18 @@ public static class BelarusTime
         return ToUtc(at);
     }
 
+    public static DateTimeOffset ToMinsk(DateTimeOffset utc)
+        => TimeZoneInfo.ConvertTime(utc, Zone);
+
+    public static string Clock(DateTimeOffset utc)
+        => ToMinsk(utc).ToString("HH:mm");
+
+    public static string DateClock(DateTimeOffset utc)
+        => ToMinsk(utc).ToString("dd.MM HH:mm");
+
+    public static string InputLocal(DateTimeOffset utc)
+        => ToMinsk(utc).ToString("yyyy-MM-dd'T'HH:mm");
+
     private static TimeZoneInfo Resolve()
     {
         foreach (var id in new[] { "Europe/Minsk", "Belarus Standard Time" })

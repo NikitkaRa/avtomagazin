@@ -1,3 +1,5 @@
+using Avtomagazin.ApiClient;
+
 namespace Avtomagazin.MauiShared;
 
 public partial class LoginPage : ContentPage
@@ -116,27 +118,13 @@ public partial class LoginPage : ContentPage
                 return;
             }
 
-            _session.SignIn(login);
+            await _session.SignInAsync(login);
             await AfterSignInAsync();
         }
         catch (Exception ex)
         {
-            ErrorLabel.Text = FriendlyLoginError(ex);
+            ErrorLabel.Text = ApiErrors.FriendlyLogin(ex);
         }
-    }
-
-    private static string FriendlyLoginError(Exception ex)
-    {
-        var msg = ex.Message;
-        if (msg.Contains("502", StringComparison.Ordinal)
-            || msg.Contains("Bad Gateway", StringComparison.OrdinalIgnoreCase)
-            || msg.Contains("Connection", StringComparison.OrdinalIgnoreCase)
-            || msg.Contains("refused", StringComparison.OrdinalIgnoreCase))
-        {
-            return "Нет связи с сервером. Проверьте, что API запущен.";
-        }
-
-        return msg.Length > 140 ? msg[..140] + "…" : msg;
     }
 
     private async Task AfterSignInAsync()

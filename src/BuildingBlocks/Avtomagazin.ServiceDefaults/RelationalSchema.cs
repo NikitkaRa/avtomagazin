@@ -26,7 +26,7 @@ public static class RelationalSchema
     private static async Task<bool> NeedsBaselineAsync(DbContext db, CancellationToken ct)
     {
         var history = db.GetService<IHistoryRepository>();
-        if (history.Exists())
+        if (history.Exists() && history.GetAppliedMigrations().Count > 0)
         {
             return false;
         }

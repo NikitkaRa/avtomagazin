@@ -19,13 +19,9 @@ public sealed record VehicleDto(
     string? PhotoDataUrl = null)
 {
     public bool IsLive(TimeSpan? maxAge = null)
-    {
-        var window = maxAge ?? TimeSpan.FromSeconds(90);
-        return LastLatitude is not null
-               && LastLongitude is not null
-               && LastSeenAtUtc is DateTimeOffset at
-               && DateTimeOffset.UtcNow - at <= window;
-    }
+        => LastLatitude is not null
+           && LastLongitude is not null
+           && GpsLive.IsFresh(LastSeenAtUtc, maxAge: maxAge);
 }
 
 public sealed record UpsertVehicleRequest(
@@ -56,9 +52,7 @@ public sealed record UpdateVehicleContactsRequest(
 public sealed record PositionIngestRequest(
     double Latitude,
     double Longitude,
-    double? SpeedKmh,
-    DateTimeOffset? RecordedAtUtc,
-    string? Source);
+    double? SpeedKmh);
 
 public sealed record VehiclePositionDto(
     Guid Id,

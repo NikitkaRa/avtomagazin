@@ -57,8 +57,13 @@ internal static class DispatchBoard
 
             var scheduleLabel = next is null
                 ? ""
-                : $"план {next.PlannedArrivalUtc.ToLocalTime():HH:mm}";
-            var delayLabel = van.IsLive() ? "в эфире" : "нет GPS";
+                : $"план {BelarusTime.Clock(next.PlannedArrivalUtc)}";
+            var delayMinutes = van.IsLive() && next is not null
+                ? (int?)Math.Max(0, (int)(DateTimeOffset.UtcNow - next.PlannedArrivalUtc).TotalMinutes)
+                : null;
+            var delayLabel = delayMinutes is > 2
+                ? $"+{delayMinutes} мин"
+                : van.IsLive() ? "в эфире" : "нет GPS";
             var note = notes.FirstOrDefault(n => n.VehicleId == van.Id);
 
             rows.Add(new RouteProgress(
@@ -66,7 +71,7 @@ internal static class DispatchBoard
                 route.Name,
                 van.PlateNumber,
                 next?.SettlementName ?? "",
-                null,
+                delayMinutes is > 2 ? delayMinutes : null,
                 delayLabel,
                 scheduleLabel,
                 van.IsLive(),
@@ -124,7 +129,7 @@ internal static class DispatchBoard
             return false;
         }
 
-        return GeoMath.DistanceMeters(lat, lng, stop.Latitude, stop.Longitude) <= 150;
+        return GeoFence.IsOnSite(lat, lng, stop.Latitude, stop.Longitude);
     }
 
     public static string StatusLabel(string status) => CaseStatuses.Title(status);
@@ -165,6 +170,6 @@ internal static class DispatchBoard
             return $"{(int)delta.TotalHours} ч";
         }
 
-        return when.ToLocalTime().ToString("dd.MM HH:mm");
+        return BelarusTime.DateClock(when);
     }
 }

@@ -29,7 +29,7 @@ public sealed record DriveItinerary(
         else
         {
             title = next.SettlementName;
-            meta = next.PlannedArrivalUtc.ToLocalTime().ToString("HH:mm");
+            meta = BelarusTime.Clock(next.PlannedArrivalUtc);
         }
 
         var rows = ordered.Select(stop =>
@@ -39,13 +39,13 @@ public sealed record DriveItinerary(
             var status = stop.Skipped
                 ? "пропущена"
                 : done
-                    ? $"был {stop.ArrivedAtUtc!.Value.ToLocalTime():HH:mm}"
+                    ? $"был {BelarusTime.Clock(stop.ArrivedAtUtc!.Value)}"
                     : isNext ? "сейчас" : "";
             return new DriveStopRow(
                 stop,
                 isNext,
                 done,
-                stop.PlannedArrivalUtc.ToLocalTime().ToString("HH:mm"),
+                BelarusTime.Clock(stop.PlannedArrivalUtc),
                 status);
         }).ToList();
 
@@ -64,7 +64,7 @@ public sealed record DriveItinerary(
 
     public static string DelayMeta(RouteStopDto next, DateTimeOffset now)
     {
-        var plan = next.PlannedArrivalUtc.ToLocalTime().ToString("HH:mm");
+        var plan = BelarusTime.Clock(next.PlannedArrivalUtc);
         var late = now - next.PlannedArrivalUtc;
         if (late < TimeSpan.FromMinutes(1))
         {

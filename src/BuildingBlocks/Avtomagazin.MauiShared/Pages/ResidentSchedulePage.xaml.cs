@@ -15,7 +15,7 @@ public partial class ResidentSchedulePage : ContentPage
         base.OnAppearing();
         List.ItemsSource = _snapshot.AllStops()
             .OrderBy(s => s.PlannedArrivalUtc)
-            .Select(s => new Row(s.Id, s.SettlementName, s.RegionCode, s.PlannedArrivalUtc.ToLocalTime().ToString("HH:mm")))
+            .Select(s => new Row(s.Id, s.SettlementName, s.RegionCode, BelarusTime.Clock(s.PlannedArrivalUtc)))
             .ToList();
     }
 

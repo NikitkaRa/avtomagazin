@@ -28,12 +28,10 @@ public sealed class StaffVehicleAssignedConsumer(
                       ?? await db.Vehicles.FirstOrDefaultAsync(v => v.Id == vanId, context.CancellationToken);
             if (van is null)
             {
-                logger.LogWarning("StaffVehicleAssigned for unknown van {VehicleId}", vanId);
+                throw new InvalidOperationException($"StaffVehicleAssigned for unknown van {vanId}");
             }
-            else
-            {
-                VehicleCrew.Assign(van, msg.Role, msg.UserId, msg.DisplayName, msg.Phone);
-            }
+
+            VehicleCrew.Assign(van, msg.Role, msg.UserId, msg.DisplayName, msg.Phone);
         }
 
         await db.SaveChangesAsync(context.CancellationToken);

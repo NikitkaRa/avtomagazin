@@ -14,7 +14,7 @@ internal static class FavoriteStopNotifier
         string body,
         CancellationToken ct)
     {
-        var tokens = await FavoritePush.TokensForStopAsync(db, stopId, settlementName, ct);
+        var tokens = await FavoritePush.TokensForStopAsync(db, stopId, ct);
         foreach (var token in tokens)
         {
             await pushSender.SendAsync(token, title, body, ct);

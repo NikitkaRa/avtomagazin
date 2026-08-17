@@ -35,7 +35,7 @@
                 {
                     <p class="case-plate">
                         @(OnSite ? "На точке" : "Следующая") · @Next.SettlementName
-                        · план @Next.PlannedArrivalUtc.ToLocalTime().ToString("HH:mm")
+                        · план @BelarusTime.Clock(Next.PlannedArrivalUtc)
                     </p>
                 }
                 else if (Stops.Count > 0)
@@ -82,7 +82,7 @@
                             var status = stop.Skipped
                                 ? "пропущена"
                                 : stopDone
-                                    ? $"была {stop.ArrivedAtUtc!.Value.ToLocalTime():HH:mm}"
+                                    ? $"была {BelarusTime.Clock(stop.ArrivedAtUtc!.Value)}"
                                     : isNext ? "сейчас" : "";
                             <li class="trip-stop @(isNext ? "trip-stop-now" : stopDone ? "trip-stop-done" : null)">
                                 <div>
@@ -92,7 +92,7 @@
                                         <span class="feed-sub">@status</span>
                                     }
                                 </div>
-                                <time>@stop.PlannedArrivalUtc.ToLocalTime().ToString("HH:mm")</time>
+                                <time>@BelarusTime.Clock(stop.PlannedArrivalUtc)</time>
                             </li>
                         }
                     </ul>
@@ -176,7 +176,7 @@
                                 <li class="feed-action" @onclick="() => OpenCase.InvokeAsync(caseId)">
                                     <div class="timeline-top">
                                         <strong>@ev.Kind</strong>
-                                        <time>@ev.At.ToLocalTime().ToString("dd.MM HH:mm")</time>
+                                        <time>@BelarusTime.DateClock(ev.At)</time>
                                     </div>
                                     <p>@ev.Body</p>
                                 </li>
@@ -186,7 +186,7 @@
                                 <li>
                                     <div class="timeline-top">
                                         <strong>@ev.Kind</strong>
-                                        <time>@ev.At.ToLocalTime().ToString("dd.MM HH:mm")</time>
+                                        <time>@BelarusTime.DateClock(ev.At)</time>
                                     </div>
                                     <p>@ev.Body</p>
                                 </li>

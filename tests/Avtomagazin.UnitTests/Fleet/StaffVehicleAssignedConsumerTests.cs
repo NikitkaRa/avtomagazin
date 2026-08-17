@@ -125,4 +125,34 @@ public class StaffVehicleAssignedConsumerTests
 
         await harness.Stop();
     }
+
+    [Fact]
+    public async Task Consume_unknown_van_throws()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var userId = Guid.Parse("44444444-4444-4444-4444-444444444444");
+        var missing = Guid.Parse("cccccccc-cccc-cccc-cccc-cccccccccccc");
+
+        await using var sp = new ServiceCollection()
+            .AddLogging()
+            .AddDbContext<FleetDbContext>(o => o.UseInMemoryDatabase(dbName))
+            .AddMassTransitTestHarness(cfg => cfg.AddConsumer<StaffVehicleAssignedConsumer>())
+            .BuildServiceProvider(true);
+
+        var harness = sp.GetRequiredService<ITestHarness>();
+        await harness.Start();
+
+        await using (var scope = sp.CreateAsyncScope())
+        {
+            await harness.Bus.Publish(new StaffVehicleAssigned(
+                userId,
+                Roles.Driver,
+                missing,
+                "Иван",
+                "111"));
+        }
+
+        Assert.True(await harness.Consumed.Any<StaffVehicleAssigned>(x => x.Exception != null));
+        await harness.Stop();
+    }
 }

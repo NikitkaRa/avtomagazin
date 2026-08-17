@@ -11,3 +11,18 @@ public static class GpsSources
     public static string ForHttpIngest(string? role)
         => Roles.IsVanCrew(role ?? "") ? DriverApp : Manual;
 }
+
+public static class GpsLive
+{
+    public static readonly TimeSpan Window = TimeSpan.FromSeconds(90);
+
+    public static bool IsFresh(DateTimeOffset? lastSeenAtUtc, DateTimeOffset? now = null, TimeSpan? maxAge = null)
+    {
+        if (lastSeenAtUtc is not DateTimeOffset at)
+        {
+            return false;
+        }
+
+        return (now ?? DateTimeOffset.UtcNow) - at <= (maxAge ?? Window);
+    }
+}

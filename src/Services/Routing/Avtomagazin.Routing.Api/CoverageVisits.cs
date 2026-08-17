@@ -19,7 +19,9 @@ internal static class CoverageVisits
         RoutingDbContext db,
         IPublishEndpoint bus,
         IGovIntegration gov,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        double? latitude = null,
+        double? longitude = null)
     {
         if (HttpAccess.ForbidVehicleWrite(principal, vehicleId) is { } denied)
         {
@@ -38,6 +40,11 @@ internal static class CoverageVisits
         }
 
         var arrivedAt = DateTimeOffset.UtcNow;
+        if (ForbidFarAway(principal, stop, skipped, latitude, longitude) is { } geo)
+        {
+            return (geo, null);
+        }
+
         var visit = Create(vehicleId, stop, arrivedAt, skipped);
         await SaveAsync(db, visit, ct);
 
@@ -129,5 +136,34 @@ internal static class CoverageVisits
         return Results.Json(
             new { error = "Остановка не на маршруте этой автолавки" },
             statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    private static IResult? ForbidFarAway(
+        ClaimsPrincipal principal,
+        RouteStop stop,
+        bool skipped,
+        double? latitude,
+        double? longitude)
+    {
+        if (skipped || principal.CanDispatch())
+        {
+            return null;
+        }
+
+        if (latitude is not double lat || longitude is not double lng)
+        {
+            return Results.Json(
+                new { error = "Нужны координаты — включите GPS" },
+                statusCode: StatusCodes.Status403Forbidden);
+        }
+
+        if (!GeoFence.IsOnSite(lat, lng, stop.Latitude, stop.Longitude))
+        {
+            return Results.Json(
+                new { error = $"Вы не на остановке (больше {GeoFence.ArrivalMeters:0} м)" },
+                statusCode: StatusCodes.Status403Forbidden);
+        }
+
+        return null;
     }
 }

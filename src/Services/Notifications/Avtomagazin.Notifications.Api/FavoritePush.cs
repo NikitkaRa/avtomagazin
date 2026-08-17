@@ -8,11 +8,8 @@ internal static class FavoritePush
     public static async Task<List<string>> TokensForStopAsync(
         NotificationsDbContext db,
         Guid stopId,
-        string settlementName,
         CancellationToken ct)
     {
-        _ = settlementName;
-
         var userIds = await db.FavoriteStops
             .AsNoTracking()
             .Where(f => f.StopId == stopId && f.UserId != null)

@@ -77,7 +77,7 @@ public partial class ResidentMapPage : ContentPage
         }
 
         var plate = _snapshot.Current.Vehicles.FirstOrDefault(v => v.Id == note.VehicleId)?.PlateNumber ?? "автолавка";
-        return $"Водитель ({plate}): {note.Body} · {note.CreatedAtUtc.ToLocalTime():HH:mm}";
+        return $"Водитель ({plate}): {note.Body} · {BelarusTime.Clock(note.CreatedAtUtc)}";
     }
 
     private void RenderChips()
@@ -146,7 +146,7 @@ public partial class ResidentMapPage : ContentPage
                 ? $"по расписанию{(plate is null ? "" : $" · {plate}")}"
                 : $"водитель: {note.Body}";
             UpcomingList.Children.Add(Card(
-                $"{stop.SettlementName} · план {stop.PlannedArrivalUtc.ToLocalTime():HH:mm}",
+                $"{stop.SettlementName} · план {BelarusTime.Clock(stop.PlannedArrivalUtc)}",
                 sub));
         }
     }

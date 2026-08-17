@@ -252,7 +252,7 @@ public sealed class AvtomagazinClient(HttpClient http, IAccessTokenAccessor? tok
         using var response = await SendJsonAsync(
             HttpMethod.Post,
             $"fleet/api/vehicles/{vehicleId}/positions",
-            new { latitude, longitude, speedKmh, source = GpsSources.DriverApp },
+            new { latitude, longitude, speedKmh },
             ct);
         await EnsureSuccessAsync(response, ct);
     }
@@ -350,14 +350,26 @@ public sealed class AvtomagazinClient(HttpClient http, IAccessTokenAccessor? tok
     }
 
     public Task RecordCoverageAsync(CoverageVisitRequest request, CancellationToken ct = default)
-        => ArriveAtStopAsync(request.StopId, request.VehicleId, skipped: false, ct);
+        => ArriveAtStopAsync(
+            request.StopId,
+            request.VehicleId,
+            skipped: false,
+            request.Latitude,
+            request.Longitude,
+            ct);
 
-    public async Task ArriveAtStopAsync(Guid stopId, Guid vehicleId, bool skipped = false, CancellationToken ct = default)
+    public async Task ArriveAtStopAsync(
+        Guid stopId,
+        Guid vehicleId,
+        bool skipped = false,
+        double? latitude = null,
+        double? longitude = null,
+        CancellationToken ct = default)
     {
         using var response = await SendJsonAsync(
             HttpMethod.Post,
             $"routing/api/stops/{stopId}/arrived",
-            new { vehicleId, skipped },
+            new { vehicleId, skipped, latitude, longitude },
             ct);
         await EnsureSuccessAsync(response, ct);
     }
@@ -459,24 +471,26 @@ public sealed class AvtomagazinClient(HttpClient http, IAccessTokenAccessor? tok
     {
         var vehiclesTask = GetVehiclesAsync(ct);
         var routesTask = GetRoutesAsync(ct);
-        var notesTask = SoftListAsync(() => GetDriverNotesAsync(ct));
+        var notesTask = TryListAsync(() => GetDriverNotesAsync(ct));
         await Task.WhenAll(vehiclesTask, routesTask, notesTask);
+        var (notes, notesDown) = await notesTask;
         return new SnapshotDto(
             DateTimeOffset.UtcNow,
             await vehiclesTask,
             await routesTask,
-            await notesTask);
+            notes,
+            notesDown);
     }
 
-    private static async Task<List<T>> SoftListAsync<T>(Func<Task<List<T>>> load)
+    private static async Task<(List<T> Items, bool Unavailable)> TryListAsync<T>(Func<Task<List<T>>> load)
     {
         try
         {
-            return await load();
+            return (await load(), false);
         }
         catch (Exception ex) when (ex is not SessionExpiredException and not OperationCanceledException)
         {
-            return [];
+            return ([], true);
         }
     }
 
@@ -485,14 +499,16 @@ public sealed class AvtomagazinClient(HttpClient http, IAccessTokenAccessor? tok
         var vehiclesTask = GetVehiclesAsync(ct);
         var casesTask = GetCasesAsync(caseStatus, ct);
         var routesTask = GetRoutesAsync(ct);
-        var notesTask = SoftListAsync(() => GetDriverNotesAsync(ct));
+        var notesTask = TryListAsync(() => GetDriverNotesAsync(ct));
         await Task.WhenAll(vehiclesTask, casesTask, routesTask, notesTask);
+        var (notes, notesDown) = await notesTask;
         return new DispatchSnapshotDto(
             DateTimeOffset.UtcNow,
             await vehiclesTask,
             await casesTask,
             await routesTask,
-            await notesTask);
+            notes,
+            notesDown);
     }
 
     private async Task<T?> GetJsonAsync<T>(string path, CancellationToken ct)

@@ -322,8 +322,8 @@
 
     private static string LocalPlanValue(DraftStop stop)
     {
-        var local = (stop.PlannedArrivalUtc ?? DateTimeOffset.Now).ToLocalTime();
-        return local.ToString("yyyy-MM-dd'T'HH:mm");
+        var utc = stop.PlannedArrivalUtc ?? DateTimeOffset.UtcNow;
+        return BelarusTime.InputLocal(utc);
     }
 
     private void SetPlanLocal(int index, string? value)
@@ -338,8 +338,7 @@
             return;
         }
 
-        var offset = TimeZoneInfo.Local.GetUtcOffset(local);
-        _stops[index].PlannedArrivalUtc = new DateTimeOffset(DateTime.SpecifyKind(local, DateTimeKind.Unspecified), offset);
+        _stops[index].PlannedArrivalUtc = BelarusTime.ToUtc(DateTime.SpecifyKind(local, DateTimeKind.Unspecified));
     }
 
     private async Task OnStopPhotoSelected(int index, InputFileChangeEventArgs e)
@@ -501,7 +500,12 @@
             }
 
             var region = string.IsNullOrWhiteSpace(_region) ? "BY-MI" : _region.Trim();
-            var now = DateTimeOffset.UtcNow;
+            if (_stops.Any(s => s.PlannedArrivalUtc is null))
+            {
+                Fail("Укажите время прибытия для каждой остановки");
+                return;
+            }
+
             var items = _stops.Select((s, i) => new ReplaceStopItem(
                 s.Id,
                 i + 1,
@@ -509,7 +513,7 @@
                 region,
                 s.Lat,
                 s.Lng,
-                s.PlannedArrivalUtc ?? now.AddMinutes(20 * (i + 1)),
+                s.PlannedArrivalUtc,
                 s.PhotoDirty && !s.ClearPhoto ? s.PhotoDataUrl : null,
                 s.ClearPhoto)).ToList();
 

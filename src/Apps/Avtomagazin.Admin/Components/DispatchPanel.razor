@@ -203,6 +203,7 @@
     private bool _busy;
     private string? _loadError;
     private bool _loadErrorShown;
+    private bool _notesDegradedShown;
     private CancellationTokenSource? _poll;
 
     private int _liveCount => ActiveRoutes.Count(r => r.Live);
@@ -293,7 +294,20 @@
             _vans = snap.Vehicles;
             _cases = snap.Cases;
             _routes = snap.Routes;
-            await ApplyNotesAsync(snap.DriverNotes);
+            if (snap.NotesUnavailable)
+            {
+                if (!_notesDegradedShown)
+                {
+                    _notesDegradedShown = true;
+                    Toasts.Error("Заметки водителей недоступны");
+                }
+            }
+            else
+            {
+                _notesDegradedShown = false;
+                await ApplyNotesAsync(snap.DriverNotes);
+            }
+
             _loadError = null;
             _loadErrorShown = false;
         }

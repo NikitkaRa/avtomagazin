@@ -14,6 +14,8 @@ internal static class TestJwt
     public static readonly Guid GrodnoVan = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
     public static readonly Guid PukhovichiVan = Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
     public static readonly Guid OzerichinoStop = Guid.Parse("dddddddd-dddd-dddd-dddd-ddddddddddd4");
+    public const double OzerichinoLat = 53.5774;
+    public const double OzerichinoLng = 27.7472;
 
     public static string Mint(string role, Guid? vehicleId = null, Guid? userId = null, int tokenVersion = 1)
     {

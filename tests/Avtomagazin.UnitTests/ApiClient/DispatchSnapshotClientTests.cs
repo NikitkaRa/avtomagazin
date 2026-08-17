@@ -52,6 +52,27 @@ public class DispatchSnapshotClientTests
         await Assert.ThrowsAsync<InvalidOperationException>(() => client.GetSnapshotAsync());
     }
 
+    [Fact]
+    public async Task GetSnapshotAsync_marks_notes_unavailable_without_emptying_routes()
+    {
+        var handler = new RecordingHandler([], path => path switch
+        {
+            "fleet/api/vehicles" => """[{"id":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","plateNumber":"1","operatorName":"A","isActive":true}]""",
+            "routing/api/routes" => """[{"id":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","name":"A","vehicleId":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","stops":[]}]""",
+            "routing/api/driver-notes" => throw new InvalidOperationException("should use status"),
+            _ => throw new InvalidOperationException(path)
+        }, path => path == "routing/api/driver-notes" ? HttpStatusCode.BadGateway : HttpStatusCode.OK);
+
+        using var http = new HttpClient(handler) { BaseAddress = new Uri("http://gateway.test/") };
+        var client = new AvtomagazinClient(http);
+        var snap = await client.GetSnapshotAsync();
+
+        Assert.True(snap.NotesUnavailable);
+        Assert.Empty(snap.DriverNotes!);
+        Assert.Single(snap.Vehicles);
+        Assert.Single(snap.Routes);
+    }
+
     private sealed class RecordingHandler(
         List<string> hits,
         Func<string, string> bodyFor,

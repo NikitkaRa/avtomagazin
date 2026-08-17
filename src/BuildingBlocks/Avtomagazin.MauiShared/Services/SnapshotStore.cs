@@ -79,7 +79,7 @@ public sealed class SnapshotStore
         catch (Exception ex)
         {
             Online = false;
-            LastError = ShortError(ex);
+            LastError = ApiErrors.Friendly(ex);
             if (Current.Routes.Count == 0 && Current.Vehicles.Count == 0)
             {
                 LoadCache();
@@ -94,22 +94,4 @@ public sealed class SnapshotStore
 
     private static SnapshotDto Normalize(SnapshotDto snap)
         => snap with { DriverNotes = snap.DriverNotes ?? [] };
-
-    private static string ShortError(Exception ex)
-    {
-        var msg = ex.GetBaseException().Message;
-        if (msg.Contains("502", StringComparison.Ordinal) || msg.Contains("Bad Gateway", StringComparison.OrdinalIgnoreCase))
-        {
-            return "сервер временно недоступен";
-        }
-
-        if (msg.Contains("Connection", StringComparison.OrdinalIgnoreCase)
-            || msg.Contains("timed out", StringComparison.OrdinalIgnoreCase)
-            || msg.Contains("Name or service", StringComparison.OrdinalIgnoreCase))
-        {
-            return "нет ответа от сервера";
-        }
-
-        return msg.Length > 80 ? msg[..80] + "…" : msg;
-    }
 }

@@ -86,6 +86,8 @@
     private IJSObjectReference? _geo;
     private DotNetObjectReference<DrivePanel>? _self;
     private CancellationTokenSource? _poll;
+    private double? _lat;
+    private double? _lng;
 
     private string RouteSubtitle => DriveItinerary.Subtitle(_vehicle, _route);
 
@@ -110,7 +112,7 @@
         }
         catch (Exception ex)
         {
-            _status = FriendlyError(ex.Message);
+            _status = ApiErrors.Friendly(ex);
         }
     }
 
@@ -136,7 +138,7 @@
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                _status = FriendlyError(ex.Message);
+                _status = ApiErrors.Friendly(ex);
             }
 
             await Task.Delay(8000, ct);
@@ -153,13 +155,13 @@
         _arriving = true;
         try
         {
-            await Api.ArriveAtStopAsync(_trip.Next.Id, _vehicle.Id, skipped);
+            await Api.ArriveAtStopAsync(_trip.Next.Id, _vehicle.Id, skipped, _lat, _lng);
             _status = null;
             await ReloadAsync();
         }
         catch (Exception ex)
         {
-            _status = FriendlyError(ex.Message);
+            _status = ApiErrors.Friendly(ex);
         }
         finally
         {
@@ -204,13 +206,15 @@
         try
         {
             await Api.IngestPositionAsync(_vehicle.Id, lat, lng, speedKmh);
-            _gpsStatus = $"В эфире · {DateTime.Now:HH:mm:ss}";
+            _lat = lat;
+            _lng = lng;
+            _gpsStatus = $"В эфире · {BelarusTime.ToMinsk(DateTimeOffset.UtcNow):HH:mm:ss}";
             _status = null;
             await ReloadAsync();
         }
         catch (Exception ex)
         {
-            _status = FriendlyError(ex.Message);
+            _status = ApiErrors.Friendly(ex);
         }
 
         await InvokeAsync(StateHasChanged);
@@ -219,24 +223,9 @@
     [JSInvokable]
     public Task OnGeoError(string message)
     {
-        _status = FriendlyError(message);
+        _status = ApiErrors.Friendly(message);
         _gpsStatus = "GPS ошибка";
         return InvokeAsync(StateHasChanged);
-    }
-
-    private static string FriendlyError(string message)
-    {
-        if (message.Contains("502", StringComparison.Ordinal) || message.Contains("Bad Gateway", StringComparison.OrdinalIgnoreCase))
-        {
-            return "Сервер временно недоступен";
-        }
-
-        if (message.Contains("401", StringComparison.Ordinal) || message.Contains("Unauthorized", StringComparison.OrdinalIgnoreCase))
-        {
-            return "Сессия истекла — войдите снова";
-        }
-
-        return message.Length > 140 ? message[..140] + "…" : message;
     }
 
     public async ValueTask DisposeAsync()

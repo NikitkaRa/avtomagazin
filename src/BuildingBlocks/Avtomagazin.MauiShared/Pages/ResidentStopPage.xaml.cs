@@ -35,7 +35,7 @@ public partial class ResidentStopPage : ContentPage
         }
 
         TitleLabel.Text = _stop.SettlementName;
-        PlanLabel.Text = $"План {_stop.PlannedArrivalUtc.ToLocalTime():HH:mm}";
+        PlanLabel.Text = $"План {BelarusTime.Clock(_stop.PlannedArrivalUtc)}";
         WindowLabel.Text = GeoMath.InReportWindow(_stop.PlannedArrivalUtc, DateTimeOffset.UtcNow)
             ? "Сейчас окно отметки: можно сказать «на месте» / «не приехала»."
             : "Окно отметки закрыто (за 15 мин до плана и час после).";
@@ -51,7 +51,7 @@ public partial class ResidentStopPage : ContentPage
         else
         {
             DriverNoteLabel.IsVisible = true;
-            DriverNoteLabel.Text = $"Водитель: {note.Body} · {note.CreatedAtUtc.ToLocalTime():HH:mm}";
+            DriverNoteLabel.Text = $"Водитель: {note.Body} · {BelarusTime.Clock(note.CreatedAtUtc)}";
         }
 
         FavoriteButton.Text = FavoriteStore.Contains(_stop.Id) ? "Убрать из избранного" : "В избранное";
@@ -81,7 +81,11 @@ public partial class ResidentStopPage : ContentPage
         }
         catch (Exception ex)
         {
-            Message.Text = _snapshot.Online ? ex.Message : "Нет сети — сохранили на телефоне, синхронизируем позже.";
+            FavoriteStore.Toggle(_stop.Id, _stop.SettlementName);
+            FavoriteButton.Text = FavoriteStore.Contains(_stop.Id) ? "Убрать из избранного" : "В избранное";
+            Message.Text = _snapshot.Online
+                ? ApiErrors.Friendly(ex)
+                : "Нет сети — избранное не сохранилось. Попробуйте ещё раз.";
         }
     }
 

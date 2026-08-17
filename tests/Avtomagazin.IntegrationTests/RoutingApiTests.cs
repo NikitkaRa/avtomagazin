@@ -49,7 +49,9 @@ public class RoutingApiTests : IClassFixture<RoutingApiFactory>
         using var client = TestJwt.Client(_factory, Roles.Driver, TestJwt.PukhovichiVan);
         var response = await client.PostAsJsonAsync($"/api/stops/{TestJwt.OzerichinoStop}/arrived", new
         {
-            vehicleId = TestJwt.PukhovichiVan
+            vehicleId = TestJwt.PukhovichiVan,
+            latitude = TestJwt.OzerichinoLat,
+            longitude = TestJwt.OzerichinoLng
         });
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
@@ -81,9 +83,46 @@ public class RoutingApiTests : IClassFixture<RoutingApiFactory>
         var ok = await client.PostAsJsonAsync("/api/coverage/visit", new
         {
             vehicleId = TestJwt.PukhovichiVan,
-            stopId = TestJwt.OzerichinoStop
+            stopId = TestJwt.OzerichinoStop,
+            latitude = TestJwt.OzerichinoLat,
+            longitude = TestJwt.OzerichinoLng
         });
         Assert.Equal(HttpStatusCode.Created, ok.StatusCode);
+    }
+
+    [Fact]
+    public async Task Driver_cannot_arrive_without_coordinates()
+    {
+        using var client = TestJwt.Client(_factory, Roles.Driver, TestJwt.PukhovichiVan);
+        var response = await client.PostAsJsonAsync($"/api/stops/{TestJwt.OzerichinoStop}/arrived", new
+        {
+            vehicleId = TestJwt.PukhovichiVan
+        });
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Driver_cannot_arrive_from_far_away()
+    {
+        using var client = TestJwt.Client(_factory, Roles.Driver, TestJwt.PukhovichiVan);
+        var response = await client.PostAsJsonAsync($"/api/stops/{TestJwt.OzerichinoStop}/arrived", new
+        {
+            vehicleId = TestJwt.PukhovichiVan,
+            latitude = 53.9,
+            longitude = 27.5
+        });
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Operator_can_arrive_without_coordinates()
+    {
+        using var client = TestJwt.Client(_factory, Roles.Operator);
+        var response = await client.PostAsJsonAsync($"/api/stops/{TestJwt.OzerichinoStop}/arrived", new
+        {
+            vehicleId = TestJwt.PukhovichiVan
+        });
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 
     [Fact]

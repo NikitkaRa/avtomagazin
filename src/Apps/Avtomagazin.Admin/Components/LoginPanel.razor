@@ -74,7 +74,7 @@
                 return;
             }
 
-            Session.SignIn(login.Role, login.Email, login.Name, login.VehicleId, login.AccessToken, _remember);
+            await Session.SignInAsync(login.Role, login.Email, login.Name, login.VehicleId, login.AccessToken, _remember);
         }
         catch (Exception ex)
         {

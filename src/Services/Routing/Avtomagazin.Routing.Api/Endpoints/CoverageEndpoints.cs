@@ -29,7 +29,9 @@ public static class CoverageEndpoints
                     db,
                     bus,
                     gov,
-                    ct);
+                    ct,
+                    request.Latitude,
+                    request.Longitude);
                 if (error is not null || visit is null)
                 {
                     return error ?? Results.NotFound();
@@ -57,7 +59,9 @@ public static class CoverageEndpoints
                     db,
                     bus,
                     gov,
-                    ct);
+                    ct,
+                    request.Latitude,
+                    request.Longitude);
                 if (error is not null || visit is null)
                 {
                     return error ?? Results.NotFound();

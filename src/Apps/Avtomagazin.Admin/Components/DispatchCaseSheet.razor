@@ -89,7 +89,7 @@
                             <li>
                                 <div class="timeline-top">
                                     <strong>@DispatchBoard.EventKind(ev)</strong>
-                                    <time>@ev.CreatedAtUtc.ToLocalTime().ToString("dd.MM HH:mm")</time>
+                                    <time>@BelarusTime.DateClock(ev.CreatedAtUtc)</time>
                                 </div>
                                 <p>@ev.Body</p>
                                 @if (!string.IsNullOrWhiteSpace(ev.StopLabel))

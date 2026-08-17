@@ -10,6 +10,7 @@ public static class SessionGate
     {
         var session = services.GetRequiredService<Session>();
         var flavor = services.GetRequiredService<AppFlavor>();
+        session.HydrateTokenAsync().GetAwaiter().GetResult();
         if (session.IsAuthenticated
             && !string.IsNullOrWhiteSpace(session.Role)
             && flavor.AllowedRoles.Contains(session.Role))

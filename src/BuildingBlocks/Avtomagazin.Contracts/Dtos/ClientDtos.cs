@@ -36,11 +36,13 @@ public sealed record SnapshotDto(
     DateTimeOffset? SyncedAtUtc,
     List<VehicleDto> Vehicles,
     List<RouteDto> Routes,
-    List<DriverNoteDto>? DriverNotes = null);
+    List<DriverNoteDto>? DriverNotes = null,
+    bool NotesUnavailable = false);
 
 public sealed record DispatchSnapshotDto(
     DateTimeOffset SyncedAtUtc,
     List<VehicleDto> Vehicles,
     List<CaseSummaryDto> Cases,
     List<RouteDto> Routes,
-    List<DriverNoteDto> DriverNotes);
+    List<DriverNoteDto> DriverNotes,
+    bool NotesUnavailable = false);

@@ -18,3 +18,12 @@ public static class GeoMath
 
     private static double ToRad(double deg) => deg * Math.PI / 180.0;
 }
+
+/// <summary>Server and clients share the same arrival radius.</summary>
+public static class GeoFence
+{
+    public const double ArrivalMeters = 150;
+
+    public static bool IsOnSite(double lat, double lng, double stopLat, double stopLng)
+        => GeoMath.DistanceMeters(lat, lng, stopLat, stopLng) <= ArrivalMeters;
+}

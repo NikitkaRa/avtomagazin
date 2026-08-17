@@ -89,9 +89,15 @@ public sealed record CoverageDto(
 public sealed record CoverageVisitRequest(
     Guid VehicleId,
     Guid StopId,
-    DateTimeOffset? ArrivedAtUtc);
+    DateTimeOffset? ArrivedAtUtc,
+    double? Latitude = null,
+    double? Longitude = null);
 
-public sealed record DriverArrivedRequest(Guid VehicleId, bool Skipped = false);
+public sealed record DriverArrivedRequest(
+    Guid VehicleId,
+    bool Skipped = false,
+    double? Latitude = null,
+    double? Longitude = null);
 
 public sealed record PresenceReportRequest(string Kind, string? DeviceToken);
 

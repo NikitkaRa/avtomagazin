@@ -56,7 +56,7 @@ public partial class DispatchPage : ContentPage
             {
                 Pushes.Children.Add(new Label
                 {
-                    Text = $"{push.SentAtUtc.ToLocalTime():HH:mm} · {push.Title} · {push.SettlementName}",
+                    Text = $"{BelarusTime.Clock(push.SentAtUtc)} · {push.Title} · {push.SettlementName}",
                     TextColor = Color.FromArgb("#A7B8AD"),
                     FontSize = 13
                 });

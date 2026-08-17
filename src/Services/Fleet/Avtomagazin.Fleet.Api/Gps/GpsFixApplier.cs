@@ -34,7 +34,7 @@ public static class GpsFixApplier
 
             // Live broadcast from driver/seller app wins over mock telematics.
             var live = string.Equals(vehicle.LastSource, GpsSources.DriverApp, StringComparison.OrdinalIgnoreCase)
-                       && vehicle.LastSeenAtUtc > DateTimeOffset.UtcNow.AddSeconds(-90);
+                       && GpsLive.IsFresh(vehicle.LastSeenAtUtc);
             if (live)
             {
                 continue;

@@ -21,6 +21,9 @@ public class ScheduleWindowTests
         var planned = new DateTimeOffset(2026, 8, 1, 9, 30, 0, TimeSpan.Zero);
         var today = new DateTimeOffset(2026, 8, 17, 9, 40, 0, TimeSpan.Zero);
         Assert.True(ScheduleWindow.Contains(planned, today));
+        var (opens, closes) = ScheduleWindow.Bounds(planned, today);
+        Assert.True(today >= opens && today <= closes);
+        Assert.Equal(opens, BelarusTime.TodayAtLocalClock(today, 12, 30).AddMinutes(-15));
     }
 
     [Fact]

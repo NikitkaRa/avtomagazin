@@ -36,24 +36,53 @@ public sealed class Session : IAccessTokenAccessor
         TryRestore();
     }
 
+    private const string TokenKey = "accessToken";
+
     public bool TryRestore()
     {
-        var token = Preferences.Default.Get("accessToken", "");
-        if (string.IsNullOrWhiteSpace(token))
-        {
-            return false;
-        }
-
-        AccessToken = token;
         Role = Preferences.Default.Get("role", "");
         Name = Preferences.Default.Get("name", "");
         Email = Preferences.Default.Get("email", "");
         UserId = Guid.TryParse(Preferences.Default.Get("userId", ""), out var id) ? id : null;
         VehicleId = Guid.TryParse(Preferences.Default.Get("vehicleId", ""), out var van) ? van : null;
+        AccessToken = Preferences.Default.Get(TokenKey, "");
         return IsAuthenticated && !string.IsNullOrWhiteSpace(Role);
     }
 
-    public void SignIn(LoginResponse login)
+    public async Task HydrateTokenAsync()
+    {
+        try
+        {
+            var stored = await SecureStorage.Default.GetAsync(TokenKey);
+            if (!string.IsNullOrWhiteSpace(stored))
+            {
+                AccessToken = stored;
+                Preferences.Default.Remove(TokenKey);
+                return;
+            }
+        }
+        catch (Exception)
+        {
+        }
+
+        var legacy = Preferences.Default.Get(TokenKey, "");
+        if (string.IsNullOrWhiteSpace(legacy))
+        {
+            return;
+        }
+
+        AccessToken = legacy;
+        try
+        {
+            await SecureStorage.Default.SetAsync(TokenKey, legacy);
+            Preferences.Default.Remove(TokenKey);
+        }
+        catch (Exception)
+        {
+        }
+    }
+
+    public async Task SignInAsync(LoginResponse login)
     {
         AccessToken = login.AccessToken;
         Role = login.Role;
@@ -61,12 +90,27 @@ public sealed class Session : IAccessTokenAccessor
         Email = login.Email;
         UserId = login.UserId;
         VehicleId = login.VehicleId;
-        Preferences.Default.Set("accessToken", login.AccessToken ?? "");
         Preferences.Default.Set("role", login.Role ?? "");
         Preferences.Default.Set("name", login.Name ?? "");
         Preferences.Default.Set("email", login.Email ?? "");
         Preferences.Default.Set("userId", login.UserId.ToString());
         Preferences.Default.Set("vehicleId", login.VehicleId?.ToString() ?? "");
+        Preferences.Default.Remove(TokenKey);
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(login.AccessToken))
+            {
+                await SecureStorage.Default.SetAsync(TokenKey, login.AccessToken);
+            }
+            else
+            {
+                SecureStorage.Default.Remove(TokenKey);
+            }
+        }
+        catch (Exception)
+        {
+            Preferences.Default.Set(TokenKey, login.AccessToken ?? "");
+        }
     }
 
     public void SignOut()
@@ -77,12 +121,19 @@ public sealed class Session : IAccessTokenAccessor
         Email = null;
         UserId = null;
         VehicleId = null;
-        Preferences.Default.Remove("accessToken");
+        Preferences.Default.Remove(TokenKey);
         Preferences.Default.Remove("role");
         Preferences.Default.Remove("name");
         Preferences.Default.Remove("email");
         Preferences.Default.Remove("userId");
         Preferences.Default.Remove("vehicleId");
+        try
+        {
+            SecureStorage.Default.Remove(TokenKey);
+        }
+        catch (Exception)
+        {
+        }
     }
 
     public void NotifyUnauthorized()

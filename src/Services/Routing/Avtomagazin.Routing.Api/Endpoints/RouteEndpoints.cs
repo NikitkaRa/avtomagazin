@@ -281,12 +281,13 @@ public static class RouteEndpoints
                 var now = DateTimeOffset.UtcNow;
                 if (!ScheduleWindow.Contains(stop.PlannedArrivalUtc, now))
                 {
+                    var (opensAtUtc, closesAtUtc) = ScheduleWindow.Bounds(stop.PlannedArrivalUtc, now);
                     return Results.Json(
                         new
                         {
                             error = "report window is closed",
-                            opensAtUtc = stop.PlannedArrivalUtc.AddMinutes(-15),
-                            closesAtUtc = stop.PlannedArrivalUtc.AddHours(1)
+                            opensAtUtc,
+                            closesAtUtc
                         },
                         statusCode: StatusCodes.Status403Forbidden);
                 }

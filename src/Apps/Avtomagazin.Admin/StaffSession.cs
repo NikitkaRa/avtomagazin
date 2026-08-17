@@ -12,6 +12,7 @@ public sealed class StaffSession : IAccessTokenAccessor
     private readonly ProtectedSessionStorage _session;
     private bool _restored;
     private bool _remember = true;
+    private bool _persistDirty;
 
     public StaffSession(ProtectedLocalStorage local, ProtectedSessionStorage session)
     {
@@ -58,6 +59,11 @@ public sealed class StaffSession : IAccessTokenAccessor
             }
 
             _restored = true;
+            if (_persistDirty)
+            {
+                await PersistCoreAsync();
+            }
+
             Changed?.Invoke();
         }
         catch (InvalidOperationException)
@@ -89,7 +95,7 @@ public sealed class StaffSession : IAccessTokenAccessor
         return true;
     }
 
-    public void SignIn(string role, string email, string? name, Guid? vehicleId, string? accessToken, bool remember = true)
+    public async Task SignInAsync(string role, string email, string? name, Guid? vehicleId, string? accessToken, bool remember = true)
     {
         Role = role;
         Email = email;
@@ -99,7 +105,7 @@ public sealed class StaffSession : IAccessTokenAccessor
         _remember = remember;
         _restored = true;
         LastSignOutReason = null;
-        Persist();
+        await PersistCoreAsync();
         Changed?.Invoke();
     }
 
@@ -138,7 +144,11 @@ public sealed class StaffSession : IAccessTokenAccessor
         Changed?.Invoke();
     }
 
-    private void Persist() => _ = PersistCoreAsync();
+    private void Persist()
+    {
+        _persistDirty = true;
+        _ = PersistCoreAsync();
+    }
 
     private async Task PersistCoreAsync()
     {
@@ -149,6 +159,7 @@ public sealed class StaffSession : IAccessTokenAccessor
 
             if (Role is null || AccessToken is null)
             {
+                _persistDirty = false;
                 return;
             }
 
@@ -161,9 +172,12 @@ public sealed class StaffSession : IAccessTokenAccessor
             {
                 await _session.SetAsync(SessionKey, snap);
             }
+
+            _persistDirty = false;
         }
         catch (InvalidOperationException)
         {
+            _persistDirty = true;
         }
     }
 

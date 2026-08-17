@@ -129,7 +129,7 @@
                         {
                             <button type="button" class="link" @onclick="() => ApproveAsync(u)">Включить</button>
                         }
-                        @if (u.Role != "admin")
+                        @if (u.Role != Roles.Admin)
                         {
                             <button type="button" class="link" @onclick="() => ToggleReset(u.Id)">Пароль</button>
                         }

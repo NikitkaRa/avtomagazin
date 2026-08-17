@@ -4,6 +4,7 @@ using Avtomagazin.Contracts;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 
 namespace Avtomagazin.ServiceDefaults;
 
@@ -22,7 +23,8 @@ public sealed class HttpSessionGuard(
     HttpClient http,
     IMemoryCache cache,
     IConfiguration config,
-    IHostEnvironment env) : ISessionGuard
+    IHostEnvironment env,
+    ILogger<HttpSessionGuard>? logger = null) : ISessionGuard
 {
     private bool FailClosed => DeploySecrets.IsPublic(env);
 
@@ -57,6 +59,7 @@ public sealed class HttpSessionGuard(
                 if (!response.IsSuccessStatusCode)
                 {
                     entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromSeconds(2);
+                    logger?.LogWarning("Session lookup for {UserId} returned {Status}", userId, response.StatusCode);
                     return new SessionSnapshot(UserStatuses.Active, claimed, Unreachable: true);
                 }
 
@@ -74,8 +77,9 @@ public sealed class HttpSessionGuard(
             return snapshot.Status == UserStatuses.Active
                    && snapshot.TokenVersion == claimed;
         }
-        catch
+        catch (Exception ex)
         {
+            logger?.LogWarning(ex, "Session guard could not reach Identity for {UserId}", userId);
             return !FailClosed;
         }
     }

@@ -46,7 +46,7 @@ public partial class CoveragePage : ContentPage
             {
                 Visits.Children.Add(new Label
                 {
-                    Text = $"{c.SettlementName} · {(c.WithinScheduledWindow ? "в окне" : "вне окна")} · {c.ArrivedAtUtc.ToLocalTime():HH:mm}",
+                    Text = $"{c.SettlementName} · {(c.WithinScheduledWindow ? "в окне" : "вне окна")} · {BelarusTime.Clock(c.ArrivedAtUtc)}",
                     TextColor = Color.FromArgb("#F3F7F3")
                 });
             }
