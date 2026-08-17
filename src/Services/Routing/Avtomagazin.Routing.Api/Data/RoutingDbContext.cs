@@ -19,6 +19,7 @@ public sealed class RoutingDbContext(DbContextOptions<RoutingDbContext> options)
         {
             e.HasKey(x => x.Id);
             e.Property(x => x.Name).HasMaxLength(200);
+            e.Property(x => x.IsCatalog).HasDefaultValue(false);
             e.HasMany(x => x.Stops).WithOne().HasForeignKey(x => x.RouteId);
         });
 
@@ -86,6 +87,7 @@ public sealed class TradeRoute
     public Guid Id { get; set; }
     public required string Name { get; set; }
     public Guid VehicleId { get; set; }
+    public bool IsCatalog { get; set; }
     public List<RouteStop> Stops { get; set; } = [];
 }
 
@@ -225,8 +227,15 @@ public static class Seed
     private static async Task EnsureBelarusHeatRouteAsync(RoutingDbContext db)
     {
         var routeId = DemoHeatCatalog.HeatRouteId;
-        if (await db.Routes.AnyAsync(r => r.Id == routeId))
+        var existing = await db.Routes.FirstOrDefaultAsync(r => r.Id == routeId);
+        if (existing is not null)
         {
+            if (!existing.IsCatalog)
+            {
+                existing.IsCatalog = true;
+                await db.SaveChangesAsync();
+            }
+
             return;
         }
 
@@ -234,7 +243,8 @@ public static class Seed
         {
             Id = routeId,
             Name = "Беларусь — избранное",
-            VehicleId = DemoHeatCatalog.HeatVehicleId
+            VehicleId = DemoHeatCatalog.HeatVehicleId,
+            IsCatalog = true
         });
 
         var now = DateTimeOffset.UtcNow;

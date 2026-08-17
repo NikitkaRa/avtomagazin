@@ -27,7 +27,7 @@ public static class RouteList
         {
             var (dayStart, dayEnd) = ServiceDay.TodayBounds();
             routes = routes
-                .Where(r => r.Id != DemoHeatCatalog.HeatRouteId)
+                .Where(r => !r.IsCatalog)
                 .Select(r =>
                 {
                     r.Stops = r.Stops

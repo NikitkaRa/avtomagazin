@@ -40,6 +40,30 @@ public class RouteListTests
     }
 
     [Fact]
+    public async Task Build_default_excludes_any_catalog_route()
+    {
+        var extraCatalog = Guid.NewGuid();
+        var options = new DbContextOptionsBuilder<RoutingDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options;
+
+        await using var db = new RoutingDbContext(options);
+        await Seed.EnsureSeedAsync(db);
+        db.Routes.Add(new TradeRoute
+        {
+            Id = extraCatalog,
+            Name = "Каталог не GUID тепла",
+            VehicleId = Guid.NewGuid(),
+            IsCatalog = true
+        });
+        await db.SaveChangesAsync();
+
+        var items = await RouteList.BuildAsync(db, catalog: false, CancellationToken.None);
+        Assert.DoesNotContain(items, r => r.Id == extraCatalog);
+        Assert.DoesNotContain(items, r => r.Id == DemoHeatCatalog.HeatRouteId);
+    }
+
+    [Fact]
     public async Task Build_catalog_includes_heat()
     {
         var options = new DbContextOptionsBuilder<RoutingDbContext>()
