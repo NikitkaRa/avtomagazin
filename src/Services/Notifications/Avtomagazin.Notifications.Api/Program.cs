@@ -1,7 +1,6 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using Avtomagazin.Contracts;
-using Avtomagazin.Contracts.Events;
 using Avtomagazin.Notifications.Api.Consumers;
 using Avtomagazin.Notifications.Api.Data;
 using Avtomagazin.Notifications.Api.Push;
@@ -13,7 +12,6 @@ builder.AddAvtomagazinDefaults(bus =>
 {
     bus.AddConsumer<DriverArrivedAtStopConsumer>();
     bus.AddConsumer<ScheduleChangedConsumer>();
-    bus.AddConsumer<StopArrivalEstimatedConsumer>();
 });
 
 var notificationsCs = DeploySecrets.ConnectionString(

@@ -1,4 +1,3 @@
-using Avtomagazin.Routing.Api.Consumers;
 using Avtomagazin.Routing.Api.Data;
 using Avtomagazin.Routing.Api.Endpoints;
 using Avtomagazin.Routing.Api.Gov;
@@ -6,10 +5,7 @@ using Avtomagazin.ServiceDefaults;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
-builder.AddAvtomagazinDefaults(bus =>
-{
-    bus.AddConsumer<VehiclePositionUpdatedConsumer>();
-});
+builder.AddAvtomagazinDefaults();
 builder.AddAvtomagazinObjectStorage();
 
 var routingCs = DeploySecrets.ConnectionString(

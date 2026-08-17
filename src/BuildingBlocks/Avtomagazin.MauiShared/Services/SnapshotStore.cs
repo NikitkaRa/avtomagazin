@@ -12,7 +12,7 @@ public sealed class SnapshotStore
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase
     };
 
-    public SnapshotDto Current { get; private set; } = new(null, [], [], [], []);
+    public SnapshotDto Current { get; private set; } = new(null, [], [], []);
     public string Source { get; private set; } = "empty";
     public bool Online { get; private set; }
     public string? LastError { get; private set; }
@@ -39,7 +39,7 @@ public sealed class SnapshotStore
         }
         catch
         {
-            Current = new SnapshotDto(null, [], [], [], []);
+            Current = new SnapshotDto(null, [], [], []);
             Source = "empty";
         }
     }

@@ -47,7 +47,7 @@ public partial class ResidentMapPage : ContentPage
             ? Color.FromArgb("#F0C7B0")
             : Color.FromArgb("#F0C7B0");
         RenderChips();
-        RenderEta();
+        RenderUpcoming();
         FleetMap.Render(MapView, _snapshot.Current, tiles: _snapshot.Online);
     }
 
@@ -105,16 +105,16 @@ public partial class ResidentMapPage : ContentPage
                 _settlement = captured;
                 Preferences.Default.Set("settlement", captured);
                 RenderChips();
-                RenderEta();
+                RenderUpcoming();
                 _ = ReloadAsync();
             };
             Chips.Children.Add(chip);
         }
     }
 
-    private void RenderEta()
+    private void RenderUpcoming()
     {
-        EtaList.Children.Clear();
+        UpcomingList.Children.Clear();
         var stops = _snapshot.AllStops()
             .Where(s => string.IsNullOrWhiteSpace(_settlement)
                         || s.SettlementName.Contains(_settlement, StringComparison.OrdinalIgnoreCase))
@@ -125,7 +125,7 @@ public partial class ResidentMapPage : ContentPage
 
         if (stops.Count == 0)
         {
-            EtaList.Children.Add(new Label
+            UpcomingList.Children.Add(new Label
             {
                 Text = $"По {_settlement} на сегодня плана нет — смотри «Рейс».",
                 TextColor = Color.FromArgb("#A7B8AD")
@@ -145,7 +145,7 @@ public partial class ResidentMapPage : ContentPage
             var sub = note is null
                 ? $"по расписанию{(plate is null ? "" : $" · {plate}")}"
                 : $"водитель: {note.Body}";
-            EtaList.Children.Add(Card(
+            UpcomingList.Children.Add(Card(
                 $"{stop.SettlementName} · план {stop.PlannedArrivalUtc.ToLocalTime():HH:mm}",
                 sub));
         }

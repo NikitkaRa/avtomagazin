@@ -39,24 +39,6 @@ public static class RouteEndpoints
             .RequireAuthorization()
             .WithName("FindStops");
 
-        group.MapGet("/eta", async (Guid? stopId, string? settlement, RoutingDbContext db) =>
-            {
-                var query = db.EtaSnapshots.AsNoTracking().AsQueryable();
-                if (stopId is not null)
-                {
-                    query = query.Where(e => e.StopId == stopId);
-                }
-                else if (!string.IsNullOrWhiteSpace(settlement))
-                {
-                    query = query.Where(e => e.SettlementName.Contains(settlement));
-                }
-
-                var items = await query.OrderBy(e => e.EstimatedArrivalUtc).Take(50).ToListAsync();
-                return Results.Ok(items);
-            })
-            .RequireAuthorization()
-            .WithName("GetEta");
-
         group.MapPost("/routes", async (CreateRouteRequest request, RoutingDbContext db) =>
             {
                 if (string.IsNullOrWhiteSpace(request.Name))

@@ -7,7 +7,6 @@ public sealed class RoutingDbContext(DbContextOptions<RoutingDbContext> options)
 {
     public DbSet<TradeRoute> Routes => Set<TradeRoute>();
     public DbSet<RouteStop> Stops => Set<RouteStop>();
-    public DbSet<EtaSnapshot> EtaSnapshots => Set<EtaSnapshot>();
     public DbSet<DriverStatusNote> DriverNotes => Set<DriverStatusNote>();
     public DbSet<CoverageVisit> CoverageVisits => Set<CoverageVisit>();
     public DbSet<StopPresenceReport> PresenceReports => Set<StopPresenceReport>();
@@ -30,12 +29,6 @@ public sealed class RoutingDbContext(DbContextOptions<RoutingDbContext> options)
             e.Property(x => x.RegionCode).HasMaxLength(16);
             e.Property(x => x.PhotoDataUrl);
             e.HasIndex(x => x.SettlementName);
-        });
-
-        modelBuilder.Entity<EtaSnapshot>(e =>
-        {
-            e.HasKey(x => x.Id);
-            e.HasIndex(x => new { x.StopId, x.EstimatedArrivalUtc });
         });
 
         modelBuilder.Entity<DriverStatusNote>(e =>
@@ -107,19 +100,6 @@ public sealed class RouteStop
     public double Longitude { get; set; }
     public DateTimeOffset PlannedArrivalUtc { get; set; }
     public string? PhotoDataUrl { get; set; }
-}
-
-public sealed class EtaSnapshot
-{
-    public Guid Id { get; set; }
-    public Guid VehicleId { get; set; }
-    public Guid RouteId { get; set; }
-    public Guid StopId { get; set; }
-    public required string SettlementName { get; set; }
-    public DateTimeOffset EstimatedArrivalUtc { get; set; }
-    public int MinutesUntilArrival { get; set; }
-    public double? DistanceKm { get; set; }
-    public DateTimeOffset CalculatedAtUtc { get; set; }
 }
 
 /// <summary>Latest roadside note from the van crew — one active row per vehicle.</summary>

@@ -24,7 +24,7 @@ Identity   Fleet        Routing       Notifications
 | **Gateway** | 5100 | единая точка API |
 | **Identity** | 5101 | JWT, роли, заявки персонала |
 | **Fleet** | 5102 | автопарк + GPS |
-| **Routing** | 5103 | маршруты, ETA, coverage |
+| **Routing** | 5103 | маршруты, coverage |
 | **Notifications** | 5104 | пуши / подписки |
 | **Admin** | 5200 | диспетчерская Blazor (диспетчер и админ) |
 | **ResidentApp** | Android / iOS | житель: регистрация сразу, карта, подписка |
@@ -43,8 +43,7 @@ Identity   Fleet        Routing       Notifications
 
 ### События (MassTransit)
 
-- `VehiclePositionUpdated` — Fleet → Routing (+опц. другие)
-- `StopArrivalEstimated` — Routing считает ETA (пуш с этого события больше не шлётся)
+- `VehiclePositionUpdated` — Fleet публикует GPS-точку
 - `DriverArrivedAtStop` — водитель нажал «На месте» → пуш избранным остановки
 - `ScheduleChanged` — Routing → Notifications (избранное этой остановки)
 - `CoverageVisitRecorded` — Routing → Gov adapter / audit
@@ -115,9 +114,6 @@ curl -s http://localhost:5100/identity/api/auth/login \
 
 # автолавки
 curl -s http://localhost:5100/fleet/api/vehicles
-
-# ETA
-curl -s 'http://localhost:5100/routing/api/eta?settlement=Индура'
 
 # подписка на пуши (нужен JWT жителя)
 curl -s http://localhost:5100/notifications/api/devices/register \

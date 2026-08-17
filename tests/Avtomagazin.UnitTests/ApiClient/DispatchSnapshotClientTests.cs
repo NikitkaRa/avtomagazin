@@ -26,7 +26,6 @@ public class DispatchSnapshotClientTests
 
         Assert.Single(snap.Vehicles);
         Assert.Empty(snap.Cases);
-        Assert.Empty(snap.Eta);
         Assert.Empty(snap.Routes);
         Assert.Empty(snap.DriverNotes);
         Assert.Contains(hits, h => h.Contains("fleet/api/vehicles", StringComparison.Ordinal));

@@ -15,6 +15,6 @@
             </ScrollView>
         </VerticalStackLayout>
         <mapsui:MapControl x:Name="MapView" Grid.Row="2" Margin="0,10" />
-        <VerticalStackLayout Grid.Row="3" x:Name="EtaList" Spacing="8" Margin="0,10,0,0" />
+        <VerticalStackLayout Grid.Row="3" x:Name="UpcomingList" Spacing="8" Margin="0,10,0,0" />
     </Grid>
 </ContentPage>

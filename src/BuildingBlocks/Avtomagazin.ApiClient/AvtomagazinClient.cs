@@ -474,7 +474,6 @@ public sealed class AvtomagazinClient(HttpClient http, IAccessTokenAccessor? tok
             DateTimeOffset.UtcNow,
             vehicles,
             routes,
-            [],
             await notesTask);
     }
 
@@ -501,7 +500,6 @@ public sealed class AvtomagazinClient(HttpClient http, IAccessTokenAccessor? tok
             DateTimeOffset.UtcNow,
             await vehiclesTask,
             await casesTask,
-            [],
             await routesTask,
             await notesTask);
     }
@@ -692,17 +690,6 @@ public sealed record ChangeScheduleRequest(
     DateTimeOffset NewArrivalUtc,
     string Reason);
 
-public sealed record EtaDto(
-    Guid Id,
-    Guid VehicleId,
-    Guid RouteId,
-    Guid StopId,
-    string SettlementName,
-    DateTimeOffset EstimatedArrivalUtc,
-    int MinutesUntilArrival,
-    DateTimeOffset CalculatedAtUtc,
-    double? DistanceKm = null);
-
 public sealed record DriverNoteDto(
     Guid Id,
     Guid VehicleId,
@@ -793,13 +780,11 @@ public sealed record SnapshotDto(
     DateTimeOffset? SyncedAtUtc,
     List<VehicleDto> Vehicles,
     List<RouteDto> Routes,
-    List<EtaDto> Eta,
     List<DriverNoteDto>? DriverNotes = null);
 
 public sealed record DispatchSnapshotDto(
     DateTimeOffset SyncedAtUtc,
     List<VehicleDto> Vehicles,
     List<CaseSummaryDto> Cases,
-    List<EtaDto> Eta,
     List<RouteDto> Routes,
     List<DriverNoteDto> DriverNotes);
