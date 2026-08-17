@@ -15,9 +15,9 @@
 
             <div class="eta-card">
                 <div class="eta-kicker">Следующая</div>
-                <div class="eta-title">@(_nextTitle)</div>
-                <div class="eta-time">@_nextMeta</div>
-                @if (_next is not null)
+                <div class="eta-title">@(_trip.NextTitle)</div>
+                <div class="eta-time">@_trip.NextMeta</div>
+                @if (_trip.Next is not null)
                 {
                     <div class="row drive-next-actions">
                         <button class="btn" disabled="@_arriving" @onclick="() => CompleteNextAsync(false)">На месте</button>
@@ -26,11 +26,11 @@
                 }
             </div>
 
-            @if (_rows.Count > 0)
+            @if (_trip.Rows.Count > 0)
             {
                 <p class="muted drive-stops-label">Остановки сегодня</p>
                 <div class="stack drive-stops">
-                    @foreach (var row in _rows)
+                    @foreach (var row in _trip.Rows)
                     {
                         <div class="list-row drive-stop-row @(row.IsNext ? "is-next" : null) @(row.Done ? "is-done" : null)">
                             <div>
@@ -77,10 +77,7 @@
     private string _tab = "route";
     private VehicleDto? _vehicle;
     private RouteDto? _route;
-    private RouteStopDto? _next;
-    private List<StopRow> _rows = [];
-    private string _nextTitle = "…";
-    private string _nextMeta = "";
+    private DriveItinerary _trip = DriveItinerary.FromStops([]);
     private string _gpsStatus = "GPS выключен";
     private string? _status;
     private bool _live;
@@ -90,19 +87,7 @@
     private DotNetObjectReference<DrivePanel>? _self;
     private CancellationTokenSource? _poll;
 
-    private string RouteSubtitle
-    {
-        get
-        {
-            if (_vehicle is null)
-            {
-                return "Назначьте автолавку в админке";
-            }
-
-            var op = _vehicle.OperatorName;
-            return _route is null ? op : $"{op} · {_route.Name}";
-        }
-    }
+    private string RouteSubtitle => DriveItinerary.Subtitle(_vehicle, _route);
 
     protected override async Task OnInitializedAsync()
     {
@@ -137,36 +122,7 @@
             ? snap.Vehicles.FirstOrDefault(v => v.Id == vid)
             : null;
         _route = _vehicle is null ? null : RouteDto.ForVehicle(snap.Routes, _vehicle.Id);
-        var stops = (_route?.Stops ?? []).OrderBy(s => s.Sequence).ToList();
-        _next = stops.FirstOrDefault(s => s.ArrivedAtUtc is null);
-
-        if (_next is null)
-        {
-            _nextTitle = stops.Count == 0 ? "Нет остановок на сегодня" : "Рейс завершён";
-            _nextMeta = stops.Count == 0 ? "" : "Все остановки отмечены";
-        }
-        else
-        {
-            _nextTitle = _next.SettlementName;
-            _nextMeta = _next.PlannedArrivalUtc.ToLocalTime().ToString("HH:mm");
-        }
-
-        _rows = stops.Select(stop =>
-        {
-            var done = stop.ArrivedAtUtc is not null;
-            var isNext = !done && _next?.Id == stop.Id;
-            var status = stop.Skipped
-                ? "пропущена"
-                : done
-                    ? $"был {stop.ArrivedAtUtc!.Value.ToLocalTime():HH:mm}"
-                    : isNext ? "сейчас" : "";
-            return new StopRow(
-                stop,
-                isNext,
-                done,
-                stop.PlannedArrivalUtc.ToLocalTime().ToString("HH:mm"),
-                status);
-        }).ToList();
+        _trip = DriveItinerary.FromStops(_route?.Stops);
     }
 
     private async Task LoopAsync(CancellationToken ct)
@@ -189,7 +145,7 @@
 
     private async Task CompleteNextAsync(bool skipped)
     {
-        if (_vehicle is null || _next is null)
+        if (_vehicle is null || _trip.Next is null)
         {
             return;
         }
@@ -197,7 +153,7 @@
         _arriving = true;
         try
         {
-            await Api.ArriveAtStopAsync(_next.Id, _vehicle.Id, skipped);
+            await Api.ArriveAtStopAsync(_trip.Next.Id, _vehicle.Id, skipped);
             _status = null;
             await ReloadAsync();
         }
@@ -300,6 +256,4 @@
 
         _self?.Dispose();
     }
-
-    private sealed record StopRow(RouteStopDto Stop, bool IsNext, bool Done, string Time, string Status);
 }

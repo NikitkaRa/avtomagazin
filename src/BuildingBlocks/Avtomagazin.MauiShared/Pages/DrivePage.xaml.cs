@@ -145,19 +145,15 @@ public partial class DrivePage : ContentPage
         var route = van is null ? null : RouteDto.ForVehicle(_snapshot.Current.Routes, van.Id);
 
         VanLabel.Text = van is null ? "Нет автолавки" : van.PlateNumber;
-        RouteLabel.Text = van is null
-            ? "Назначьте автолавку в админке"
-            : $"{van.OperatorName}{(route is null ? "" : $" · {route.Name}")}";
+        RouteLabel.Text = DriveItinerary.Subtitle(van, route);
 
-        var stops = (route?.Stops ?? [])
-            .OrderBy(s => s.Sequence)
-            .ToList();
-        _nextStop = stops.FirstOrDefault(s => s.ArrivedAtUtc is null);
+        var trip = DriveItinerary.FromStops(route?.Stops);
+        _nextStop = trip.Next;
 
         if (_nextStop is null)
         {
-            NextTitle.Text = stops.Count == 0 ? "Нет остановок на сегодня" : "Рейс завершён";
-            NextMeta.Text = stops.Count == 0 ? "" : "Все остановки отмечены";
+            NextTitle.Text = trip.NextTitle;
+            NextMeta.Text = trip.NextMeta;
             NextMeta.TextColor = Color.FromArgb("#A7B8AD");
             NextActions.IsVisible = false;
             NextMap.IsVisible = false;
@@ -189,7 +185,7 @@ public partial class DrivePage : ContentPage
 
         PaintNoteAction();
 
-        RenderStops(stops, _nextStop?.Id);
+        RenderStops(trip);
 
         // Banner owns connectivity messaging; keep RouteStatus for action feedback only.
         var routeStatus = RouteStatus.Text ?? "";
@@ -315,34 +311,21 @@ public partial class DrivePage : ContentPage
             return;
         }
 
-        var plan = _nextStop.PlannedArrivalUtc.ToLocalTime().ToString("HH:mm");
+        var plan = DriveItinerary.DelayMeta(_nextStop, DateTimeOffset.UtcNow);
         var late = DateTimeOffset.UtcNow - _nextStop.PlannedArrivalUtc;
-        if (late < TimeSpan.FromMinutes(1))
-        {
-            NextMeta.Text = plan;
-            NextMeta.TextColor = Color.FromArgb("#A7B8AD");
-            return;
-        }
-
-        var mins = Math.Max(1, (int)late.TotalMinutes);
-        NextMeta.Text = mins < 60
-            ? $"{plan} · опоздание {mins} мин"
-            : $"{plan} · опоздание {mins / 60} ч {mins % 60} мин";
-        NextMeta.TextColor = Color.FromArgb("#F0C7B0");
+        NextMeta.Text = plan;
+        NextMeta.TextColor = Color.FromArgb(late < TimeSpan.FromMinutes(1) ? "#A7B8AD" : "#F0C7B0");
     }
 
-    private void RenderStops(List<RouteStopDto> stops, Guid? nextStopId)
+    private void RenderStops(DriveItinerary trip)
     {
         Stops.Children.Clear();
-        foreach (var stop in stops)
+        foreach (var row in trip.Rows)
         {
-            var done = stop.ArrivedAtUtc is not null;
-            var isNext = !done && nextStopId == stop.Id;
-            var status = stop.Skipped
-                ? "пропущена"
-                : done
-                    ? $"был {stop.ArrivedAtUtc!.Value.ToLocalTime():HH:mm}"
-                    : isNext ? "сейчас" : "";
+            var stop = row.Stop;
+            var done = row.Done;
+            var isNext = row.IsNext;
+            var status = row.Status;
 
             var card = new Border
             {
@@ -393,7 +376,7 @@ public partial class DrivePage : ContentPage
 
             grid.Add(new Label
             {
-                Text = stop.PlannedArrivalUtc.ToLocalTime().ToString("HH:mm"),
+                Text = row.Time,
                 TextColor = Color.FromArgb(isNext ? "#3DBA7A" : "#F3F7F3"),
                 FontAttributes = FontAttributes.Bold,
                 FontSize = 28,
