@@ -321,14 +321,6 @@ public sealed class AvtomagazinClient(HttpClient http, IAccessTokenAccessor? tok
         response.EnsureSuccessStatusCode();
     }
 
-    public Task<List<EtaDto>> GetEtaAsync(string? settlement = null, CancellationToken ct = default)
-    {
-        var path = string.IsNullOrWhiteSpace(settlement)
-            ? "routing/api/eta"
-            : $"routing/api/eta?settlement={Uri.EscapeDataString(settlement)}";
-        return GetListAsync<EtaDto>(path, ct);
-    }
-
     public Task<List<DriverNoteDto>> GetDriverNotesAsync(CancellationToken ct = default)
         => GetListAsync<DriverNoteDto>("routing/api/driver-notes", ct);
 

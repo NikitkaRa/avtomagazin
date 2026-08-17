@@ -1,5 +1,4 @@
 using Avtomagazin.Contracts.Events;
-using Avtomagazin.Notifications.Api;
 using Avtomagazin.Notifications.Api.Data;
 using Avtomagazin.Notifications.Api.Push;
 using MassTransit;
@@ -16,31 +15,18 @@ public sealed class DriverArrivedAtStopConsumer(
         var msg = context.Message;
         var title = "Автолавка на месте";
         var body = $"{msg.SettlementName}: уже можно подходить.";
-        var tokens = await FavoritePush.TokensForStopAsync(
+        var count = await FavoriteStopNotifier.NotifyAsync(
             db,
+            pushSender,
             msg.StopId,
             msg.SettlementName,
+            title,
+            body,
             context.CancellationToken);
 
-        foreach (var token in tokens)
-        {
-            await pushSender.SendAsync(token, title, body, context.CancellationToken);
-        }
-
-        db.NotificationLogs.Add(new NotificationLog
-        {
-            Id = Guid.NewGuid(),
-            Title = title,
-            Body = body,
-            SettlementName = msg.SettlementName,
-            SentAtUtc = DateTimeOffset.UtcNow,
-            RecipientCount = tokens.Count
-        });
-
-        await db.SaveChangesAsync(context.CancellationToken);
         logger.LogInformation(
             "Driver arrived at {Settlement}: push to {Count} favorite devices",
             msg.SettlementName,
-            tokens.Count);
+            count);
     }
 }

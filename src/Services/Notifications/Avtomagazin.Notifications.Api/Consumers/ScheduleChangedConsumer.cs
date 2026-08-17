@@ -1,5 +1,4 @@
 using Avtomagazin.Contracts.Events;
-using Avtomagazin.Notifications.Api;
 using Avtomagazin.Notifications.Api.Data;
 using Avtomagazin.Notifications.Api.Push;
 using MassTransit;
@@ -13,29 +12,13 @@ public sealed class ScheduleChangedConsumer(
     public async Task Consume(ConsumeContext<ScheduleChanged> context)
     {
         var msg = context.Message;
-        var title = "Изменение расписания автолавки";
-        var body = $"{msg.SettlementName}: {msg.Reason}";
-        var tokens = await FavoritePush.TokensForStopAsync(
+        await FavoriteStopNotifier.NotifyAsync(
             db,
+            pushSender,
             msg.StopId,
             msg.SettlementName,
+            "Изменение расписания автолавки",
+            $"{msg.SettlementName}: {msg.Reason}",
             context.CancellationToken);
-
-        foreach (var token in tokens)
-        {
-            await pushSender.SendAsync(token, title, body, context.CancellationToken);
-        }
-
-        db.NotificationLogs.Add(new NotificationLog
-        {
-            Id = Guid.NewGuid(),
-            Title = title,
-            Body = body,
-            SettlementName = msg.SettlementName,
-            SentAtUtc = DateTimeOffset.UtcNow,
-            RecipientCount = tokens.Count
-        });
-
-        await db.SaveChangesAsync(context.CancellationToken);
     }
 }
