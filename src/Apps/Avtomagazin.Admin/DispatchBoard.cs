@@ -127,19 +127,13 @@ internal static class DispatchBoard
         return GeoMath.DistanceMeters(lat, lng, stop.Latitude, stop.Longitude) <= 150;
     }
 
-    public static string StatusLabel(string status) => status switch
-    {
-        "open" => "открыта",
-        "in_progress" => "в процессе",
-        "closed" => "закрыта",
-        _ => status
-    };
+    public static string StatusLabel(string status) => CaseStatuses.Title(status);
 
     public static string EventKind(CaseEventDto ev) => ev.Kind switch
     {
-        "report" => "Жалоба",
-        "status" => "Статус",
-        "comment" => "Комментарий",
+        CaseEventKinds.Report => "Жалоба",
+        CaseEventKinds.Status => "Статус",
+        CaseEventKinds.Comment => "Комментарий",
         _ => ev.Kind
     };
 

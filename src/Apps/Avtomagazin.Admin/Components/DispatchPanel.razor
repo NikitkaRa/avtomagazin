@@ -40,9 +40,9 @@
         <div class="attn-tools">
             <div class="filter-chips" role="tablist" aria-label="Статус">
                 <button type="button" class="chip @(_statusFilter == "active" ? "chip-on" : null)" @onclick='() => SetStatusFilterAsync("active")'>Активные</button>
-                <button type="button" class="chip @(_statusFilter == "open" ? "chip-on" : null)" @onclick='() => SetStatusFilterAsync("open")'>Открыты</button>
-                <button type="button" class="chip @(_statusFilter == "in_progress" ? "chip-on" : null)" @onclick='() => SetStatusFilterAsync("in_progress")'>В процессе</button>
-                <button type="button" class="chip @(_statusFilter == "closed" ? "chip-on" : null)" @onclick='() => SetStatusFilterAsync("closed")'>Закрыты</button>
+                <button type="button" class="chip @(_statusFilter == CaseStatuses.Open ? "chip-on" : null)" @onclick="() => SetStatusFilterAsync(CaseStatuses.Open)">Открыты</button>
+                <button type="button" class="chip @(_statusFilter == CaseStatuses.InProgress ? "chip-on" : null)" @onclick="() => SetStatusFilterAsync(CaseStatuses.InProgress)">В процессе</button>
+                <button type="button" class="chip @(_statusFilter == CaseStatuses.Closed ? "chip-on" : null)" @onclick="() => SetStatusFilterAsync(CaseStatuses.Closed)">Закрыты</button>
                 <button type="button" class="chip @(_statusFilter == "all" ? "chip-on" : null)" @onclick='() => SetStatusFilterAsync("all")'>Все</button>
             </div>
             <input class="attn-search" @bind="_settlementQuery" @bind:event="oninput" placeholder="Поиск по населённому пункту" />
@@ -74,7 +74,7 @@
                 @foreach (var item in FilteredCases)
                 {
                     var van = VanOf(item.VehicleId);
-                    <li class="feed-row @(item.Status == "closed" ? null : "warn") feed-action" @onclick="() => OpenAttentionCaseAsync(item)">
+                    <li class="feed-row @(item.Status == CaseStatuses.Closed ? null : "warn") feed-action" @onclick="() => OpenAttentionCaseAsync(item)">
                         <div>
                             <strong>@item.SettlementName</strong>
                             <span class="feed-sub">
@@ -160,7 +160,7 @@
     var tripNote = NoteOf(tripId);
     var tripStops = (tripRoute?.Stops ?? []).OrderBy(s => s.Sequence).ToList();
     var tripCases = _cases.Where(c => c.VehicleId == tripId)
-        .OrderByDescending(c => c.Status != "closed")
+        .OrderByDescending(c => c.Status != CaseStatuses.Closed)
         .ThenByDescending(c => c.UpdatedAtUtc)
         .ToList();
     <DispatchTripSheet Van="tripVan"
@@ -244,7 +244,7 @@
             }
 
             return items
-                .OrderByDescending(c => c.Status != "closed")
+                .OrderByDescending(c => c.Status != CaseStatuses.Closed)
                 .ThenByDescending(c => c.ReportCount)
                 .ThenByDescending(c => c.UpdatedAtUtc);
         }
@@ -282,8 +282,8 @@
     {
         var status = _statusFilter switch
         {
-            "active" => "open,in_progress",
-            "all" => "open,in_progress,closed",
+            "active" => $"{CaseStatuses.Open},{CaseStatuses.InProgress}",
+            "all" => $"{CaseStatuses.Open},{CaseStatuses.InProgress},{CaseStatuses.Closed}",
             _ => _statusFilter
         };
 
@@ -440,9 +440,9 @@
         }
     }
 
-    private Task MarkInProgressAsync() => SetStatusAsync("in_progress");
-    private Task CloseCaseStatusAsync() => SetStatusAsync("closed");
-    private Task ReopenCaseAsync() => SetStatusAsync("open");
+    private Task MarkInProgressAsync() => SetStatusAsync(CaseStatuses.InProgress);
+    private Task CloseCaseStatusAsync() => SetStatusAsync(CaseStatuses.Closed);
+    private Task ReopenCaseAsync() => SetStatusAsync(CaseStatuses.Open);
 
     private async Task SetStatusAsync(string status)
     {

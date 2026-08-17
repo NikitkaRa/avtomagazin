@@ -136,16 +136,18 @@ else
     private string _sellerPhone = "";
     private Guid _driverUserId;
     private Guid _sellerUserId;
+    private Guid _assignedDriverUserId;
+    private Guid _assignedSellerUserId;
     private string _isActiveText = "true";
     private string? _photoDataUrl;
     private bool _clearPhoto;
     private bool _photoDirty;
 
     private IEnumerable<StaffMemberDto> Drivers =>
-        _staff.Where(s => s.Role == "driver");
+        _staff.Where(s => s.Role == Roles.Driver);
 
     private IEnumerable<StaffMemberDto> Sellers =>
-        _staff.Where(s => s.Role == "seller");
+        _staff.Where(s => s.Role == Roles.Seller);
 
     private async Task BootstrapAsync()
     {
@@ -189,6 +191,8 @@ else
             _sellerPhone = v.SellerPhone ?? "";
             _driverUserId = v.DriverUserId ?? Guid.Empty;
             _sellerUserId = v.SellerUserId ?? Guid.Empty;
+            _assignedDriverUserId = _driverUserId;
+            _assignedSellerUserId = _sellerUserId;
             _isActiveText = v.IsActive ? "true" : "false";
             _photoDataUrl = v.PhotoDataUrl;
             _clearPhoto = false;
@@ -357,11 +361,22 @@ else
             {
                 await Api.AssignUserVehicleAsync(_driverUserId, vehicleId);
             }
+            else if (_assignedDriverUserId != Guid.Empty)
+            {
+                await Api.AssignUserVehicleAsync(_assignedDriverUserId, null);
+            }
 
             if (_sellerUserId != Guid.Empty)
             {
                 await Api.AssignUserVehicleAsync(_sellerUserId, vehicleId);
             }
+            else if (_assignedSellerUserId != Guid.Empty)
+            {
+                await Api.AssignUserVehicleAsync(_assignedSellerUserId, null);
+            }
+
+            _assignedDriverUserId = _driverUserId;
+            _assignedSellerUserId = _sellerUserId;
         }
         catch (Exception ex)
         {

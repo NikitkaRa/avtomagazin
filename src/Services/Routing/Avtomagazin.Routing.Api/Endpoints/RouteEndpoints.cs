@@ -267,7 +267,7 @@ public static class RouteEndpoints
                 RoutingDbContext db) =>
             {
                 var kind = (request.Kind ?? "").Trim().ToLowerInvariant();
-                if (kind is not ("on-site" or "no-show"))
+                if (!PresenceKinds.IsKnown(kind))
                 {
                     return Results.BadRequest(new { error = "kind must be on-site or no-show" });
                 }
@@ -302,7 +302,7 @@ public static class RouteEndpoints
                 };
                 db.PresenceReports.Add(report);
 
-                if (kind == "no-show")
+                if (kind == PresenceKinds.NoShow)
                 {
                     await CaseWorkflow.AttachNoShowAsync(db, stop, now);
                 }

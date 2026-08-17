@@ -6,7 +6,11 @@ using Avtomagazin.ServiceDefaults;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
-builder.AddAvtomagazinDefaults(bus => bus.AddConsumer<StaffContactChangedConsumer>());
+builder.AddAvtomagazinDefaults(bus =>
+{
+    bus.AddConsumer<StaffContactChangedConsumer>();
+    bus.AddConsumer<StaffVehicleAssignedConsumer>();
+});
 builder.AddAvtomagazinObjectStorage();
 
 var fleetCs = DeploySecrets.ConnectionString(

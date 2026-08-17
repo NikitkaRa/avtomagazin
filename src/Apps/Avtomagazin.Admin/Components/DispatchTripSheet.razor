@@ -147,7 +147,7 @@
                     <ul class="feed trip-case-feed">
                         @foreach (var item in Cases)
                         {
-                            <li class="feed-row @(item.Status == "closed" ? null : "warn") feed-action"
+                            <li class="feed-row @(item.Status == CaseStatuses.Closed ? null : "warn") feed-action"
                                 @onclick="() => OpenCase.InvokeAsync(item.Id)">
                                 <div>
                                     <strong>@item.SettlementName</strong>

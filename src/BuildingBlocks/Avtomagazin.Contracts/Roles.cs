@@ -17,14 +17,14 @@ public static class Roles
     /// <summary>Админ райпо: подтверждает персонал. Обычно один.</summary>
     public const string Admin = "admin";
 
-    public static string Title(string role) => role switch
+    public static string Title(string? role) => role switch
     {
         Resident => "Житель",
         Driver => "Водитель",
         Seller => "Продавец",
         Operator => "Диспетчер",
         Admin => "Админ",
-        _ => role
+        _ => role ?? ""
     };
 
     public static bool IsStaff(string role) => role is Driver or Seller or Operator or Admin;
@@ -37,6 +37,14 @@ public static class UserStatuses
     public const string Pending = "pending";
     public const string Active = "active";
     public const string Disabled = "disabled";
+
+    public static string Title(string status) => status switch
+    {
+        Pending => "ждёт",
+        Active => "активен",
+        Disabled => "отключён",
+        _ => status
+    };
 }
 
 public static class AuthClients

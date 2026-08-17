@@ -63,11 +63,11 @@
                 </label>
                 <div class="row">
                     <button type="button" class="btn" disabled="@(Busy || string.IsNullOrWhiteSpace(Comment))" @onclick="AddComment">Коммент</button>
-                    <button type="button" class="btn @(Detail.Status == "in_progress" ? "" : "btn-ghost")" disabled="@Busy"
+                    <button type="button" class="btn @(Detail.Status == CaseStatuses.InProgress ? "" : "btn-ghost")" disabled="@Busy"
                             @onclick="MarkInProgress">В процессе</button>
                     <button type="button" class="btn btn-ghost" disabled="@Busy"
                             @onclick="CloseStatus">Закрыть кейс</button>
-                    @if (Detail.Status == "closed")
+                    @if (Detail.Status == CaseStatuses.Closed)
                     {
                         <button type="button" class="btn btn-ghost" disabled="@Busy"
                                 @onclick="Reopen">Снова открыть</button>

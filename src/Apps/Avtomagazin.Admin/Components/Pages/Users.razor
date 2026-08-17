@@ -33,10 +33,10 @@
             <section class="panel">
                 <strong>@u.DisplayName</strong>
                 <div class="muted">@u.Email · @u.RoleTitle</div>
-                @if (u.Role is "driver" or "seller")
+                @if (Roles.IsVanCrew(u.Role))
                 {
                     <label class="field" style="margin-top:0.55rem">
-                        <span>Автолавка @(u.Role == "driver" ? "(обязательно)" : "(по желанию)")</span>
+                        <span>Автолавка @(u.Role == Roles.Driver ? "(обязательно)" : "(по желанию)")</span>
                         <div class="select-wrap">
                             <select value="@VanOf(u.Id)" @onchange="e => SetVan(u.Id, e.Value?.ToString())">
                                 <option value="">выберите</option>
@@ -68,10 +68,10 @@
         {
             <div class="filter-chips" role="tablist" aria-label="Роль">
                 <button type="button" class="chip @RoleOn("all")" @onclick='() => SetRole("all")'>Все роли</button>
-                <button type="button" class="chip @RoleOn("driver")" @onclick='() => SetRole("driver")'>Водители</button>
-                <button type="button" class="chip @RoleOn("seller")" @onclick='() => SetRole("seller")'>Продавцы</button>
-                <button type="button" class="chip @RoleOn("operator")" @onclick='() => SetRole("operator")'>Диспетчеры</button>
-                <button type="button" class="chip @RoleOn("admin")" @onclick='() => SetRole("admin")'>Админы</button>
+                <button type="button" class="chip @RoleOn(Roles.Driver)" @onclick="() => SetRole(Roles.Driver)">Водители</button>
+                <button type="button" class="chip @RoleOn(Roles.Seller)" @onclick="() => SetRole(Roles.Seller)">Продавцы</button>
+                <button type="button" class="chip @RoleOn(Roles.Operator)" @onclick="() => SetRole(Roles.Operator)">Диспетчеры</button>
+                <button type="button" class="chip @RoleOn(Roles.Admin)" @onclick="() => SetRole(Roles.Admin)">Админы</button>
             </div>
             <div class="filter-chips" role="tablist" aria-label="Назначение">
                 <button type="button" class="chip @AssignOn("all")" @onclick='() => SetAssign("all")'>Все</button>
@@ -83,10 +83,10 @@
             <button type="button" class="chip @StatusOn("all")" @onclick='() => SetStatus("all")'>Любой статус</button>
             @if (_segment == "staff")
             {
-                <button type="button" class="chip @StatusOn("pending")" @onclick='() => SetStatus("pending")'>Ждут</button>
+                <button type="button" class="chip @StatusOn(UserStatuses.Pending)" @onclick="() => SetStatus(UserStatuses.Pending)">Ждут</button>
             }
-            <button type="button" class="chip @StatusOn("active")" @onclick='() => SetStatus("active")'>Активны</button>
-            <button type="button" class="chip @StatusOn("disabled")" @onclick='() => SetStatus("disabled")'>Отключены</button>
+            <button type="button" class="chip @StatusOn(UserStatuses.Active)" @onclick="() => SetStatus(UserStatuses.Active)">Активны</button>
+            <button type="button" class="chip @StatusOn(UserStatuses.Disabled)" @onclick="() => SetStatus(UserStatuses.Disabled)">Отключены</button>
         </div>
     </div>
 
@@ -115,17 +115,17 @@
                 <tr>
                     <td>@u.DisplayName<br /><span class="muted tiny">@u.Email</span></td>
                     <td>@u.RoleTitle</td>
-                    <td>@StatusTitle(u.Status)</td>
+                    <td>@UserStatuses.Title(u.Status)</td>
                     @if (_segment == "staff")
                     {
                         <td class="muted tiny">@VanLabel(u)</td>
                     }
                     <td>
-                        @if (u.Role != "admin" && u.Status == "active")
+                        @if (u.Role != Roles.Admin && u.Status == UserStatuses.Active)
                         {
                             <button type="button" class="link" @onclick="() => DisableAsync(u)">Отключить</button>
                         }
-                        else if (u.Role != "admin" && u.Status == "disabled")
+                        else if (u.Role != Roles.Admin && u.Status == UserStatuses.Disabled)
                         {
                             <button type="button" class="link" @onclick="() => ApproveAsync(u)">Включить</button>
                         }
@@ -167,8 +167,8 @@
         get
         {
             IEnumerable<AccountDto> items = _segment == "residents"
-                ? _all.Where(u => u.Role == "resident")
-                : _all.Where(u => u.Role is not "resident");
+                ? _all.Where(u => u.Role == Roles.Resident)
+                : _all.Where(u => u.Role != Roles.Resident);
 
             if (_segment == "staff" && _roleFilter is not "all")
             {
@@ -185,7 +185,7 @@
                 items = _assignFilter switch
                 {
                     "assigned" => items.Where(u => u.VehicleId is not null),
-                    "free" => items.Where(u => u.VehicleId is null && u.Role is "driver" or "seller"),
+                    "free" => items.Where(u => u.VehicleId is null && Roles.IsVanCrew(u.Role)),
                     _ => items
                 };
             }
@@ -193,11 +193,11 @@
             return items
                 .OrderBy(u => u.Role switch
                 {
-                    "admin" => 0,
-                    "operator" => 1,
-                    "driver" => 2,
-                    "seller" => 3,
-                    "resident" => 4,
+                    Roles.Admin => 0,
+                    Roles.Operator => 1,
+                    Roles.Driver => 2,
+                    Roles.Seller => 3,
+                    Roles.Resident => 4,
                     _ => 9
                 })
                 .ThenBy(u => u.DisplayName, StringComparer.OrdinalIgnoreCase);
@@ -214,7 +214,7 @@
         _segment = segment;
         _roleFilter = "all";
         _assignFilter = "all";
-        if (segment == "residents" && _statusFilter == "pending")
+        if (segment == "residents" && _statusFilter == UserStatuses.Pending)
         {
             _statusFilter = "all";
         }
@@ -229,10 +229,10 @@
         try
         {
             _all = await Api.GetUsersAsync();
-            _pending = _all.Where(u => u.Status == "pending" && u.Role is not "resident").ToList();
+            _pending = _all.Where(u => u.Status == UserStatuses.Pending && u.Role != Roles.Resident).ToList();
             _vans = await Api.GetVehiclesAsync();
             foreach (var u in _pending.Where(x =>
-                         (x.Role is "driver" or "seller") && !_vanByUser.ContainsKey(x.Id)))
+                         Roles.IsVanCrew(x.Role) && !_vanByUser.ContainsKey(x.Id)))
             {
                 _vanByUser[u.Id] = u.VehicleId?.ToString() ?? "";
             }
@@ -250,7 +250,7 @@
         try
         {
             Guid? van = user.VehicleId;
-            if ((user.Role is "driver" or "seller")
+            if (Roles.IsVanCrew(user.Role)
                 && _vanByUser.TryGetValue(user.Id, out var raw)
                 && Guid.TryParse(raw, out var picked))
             {
@@ -328,18 +328,10 @@
     {
         if (u.VehicleId is not Guid id)
         {
-            return u.Role is "driver" or "seller" ? "—" : "";
+            return Roles.IsVanCrew(u.Role) ? "—" : "";
         }
 
         var van = _vans.FirstOrDefault(v => v.Id == id);
         return van is null ? "назначена" : van.PlateNumber;
     }
-
-    private static string StatusTitle(string status) => status switch
-    {
-        "pending" => "ждёт",
-        "active" => "активен",
-        "disabled" => "отключён",
-        _ => status
-    };
 }

@@ -85,9 +85,9 @@ public partial class ResidentStopPage : ContentPage
         }
     }
 
-    private void OnSite(object? sender, EventArgs e) => _ = ReportAsync("on-site");
+    private void OnSite(object? sender, EventArgs e) => _ = ReportAsync(PresenceKinds.OnSite);
 
-    private void OnNoShow(object? sender, EventArgs e) => _ = ReportAsync("no-show");
+    private void OnNoShow(object? sender, EventArgs e) => _ = ReportAsync(PresenceKinds.NoShow);
 
     private async Task ReportAsync(string kind)
     {
@@ -99,7 +99,7 @@ public partial class ResidentStopPage : ContentPage
         try
         {
             await _api.Client.ReportStopPresenceAsync(_stop.Id, kind, _session.DeviceToken);
-            Message.Text = kind == "on-site" ? "Записали: автолавка на месте." : "Записали: не приехала.";
+            Message.Text = kind == PresenceKinds.OnSite ? "Записали: автолавка на месте." : "Записали: не приехала.";
         }
         catch (Exception ex)
         {

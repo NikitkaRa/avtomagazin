@@ -344,7 +344,8 @@ internal static class IdentityRoutes
     private static async Task<IResult> AssignVehicleAsync(
         Guid id,
         [FromBody] AssignVehicleRequest? request,
-        IdentityDbContext db)
+        IdentityDbContext db,
+        IPublishEndpoint bus)
     {
         var user = await db.Users.FirstOrDefaultAsync(u => u.Id == id);
         if (user is null)
@@ -363,11 +364,7 @@ internal static class IdentityRoutes
         }
 
         var vehicleId = request?.VehicleId is Guid van && van != Guid.Empty ? van : (Guid?)null;
-        if (user.Role == Roles.Driver && vehicleId is null)
-        {
-            return Results.BadRequest(new { error = "Водителю нужна автолавка" });
-        }
-
+        var bumped = new List<AppUser>();
         if (vehicleId is Guid assigned)
         {
             var previous = await db.Users
@@ -377,19 +374,27 @@ internal static class IdentityRoutes
             {
                 other.VehicleId = null;
                 other.TokenVersion++;
+                bumped.Add(other);
             }
         }
 
         user.VehicleId = vehicleId;
         user.TokenVersion++;
         await db.SaveChangesAsync();
+        await NotifyVehicleAsync(bus, user);
+        foreach (var other in bumped)
+        {
+            await NotifyVehicleAsync(bus, other);
+        }
+
         return Results.Ok(IdentityMaps.ToStaff(user));
     }
 
     private static async Task<IResult> ApproveAsync(
         Guid id,
         [FromBody] ApproveUserRequest? request,
-        IdentityDbContext db)
+        IdentityDbContext db,
+        IPublishEndpoint bus)
     {
         var user = await db.Users.FirstOrDefaultAsync(u => u.Id == id);
         if (user is null)
@@ -428,8 +433,21 @@ internal static class IdentityRoutes
         }
 
         await db.SaveChangesAsync();
+        if (Roles.IsVanCrew(user.Role))
+        {
+            await NotifyVehicleAsync(bus, user);
+        }
+
         return Results.Ok(IdentityMaps.ToAccount(user));
     }
+
+    private static Task NotifyVehicleAsync(IPublishEndpoint bus, AppUser user)
+        => bus.Publish(new StaffVehicleAssigned(
+            user.Id,
+            user.Role,
+            user.VehicleId,
+            user.DisplayName,
+            user.Phone));
 
     private static async Task<IResult> RejectAsync(Guid id, IdentityDbContext db)
     {

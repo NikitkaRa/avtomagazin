@@ -102,13 +102,7 @@
     private bool _ready;
     private bool _wasAuthenticated;
 
-    private string RoleLabel => Session.Role switch
-    {
-        "driver" => "Водитель",
-        "seller" => "Продавец",
-        "admin" => "Админ",
-        _ => "Диспетчер"
-    };
+    private string RoleLabel => Roles.Title(Session.Role);
 
     protected override void OnInitialized()
     {

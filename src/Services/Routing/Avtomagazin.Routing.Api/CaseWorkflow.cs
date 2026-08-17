@@ -1,3 +1,4 @@
+using Avtomagazin.Contracts;
 using Avtomagazin.Routing.Api.Data;
 using Microsoft.EntityFrameworkCore;
 
@@ -10,7 +11,7 @@ internal static class CaseWorkflow
         var key = SettlementNames.Key(stop.SettlementName);
         var route = await db.Routes.AsNoTracking().FirstOrDefaultAsync(r => r.Id == stop.RouteId);
         var open = await db.Cases
-            .Where(c => c.SettlementKey == key && (c.Status == "open" || c.Status == "in_progress"))
+            .Where(c => c.SettlementKey == key && (c.Status == CaseStatuses.Open || c.Status == CaseStatuses.InProgress))
             .OrderByDescending(c => c.UpdatedAtUtc)
             .FirstOrDefaultAsync();
 
@@ -22,7 +23,7 @@ internal static class CaseWorkflow
                 SettlementKey = key,
                 SettlementName = key,
                 VehicleId = route?.VehicleId,
-                Status = "open",
+                Status = CaseStatuses.Open,
                 ReportCount = 0,
                 OpenedAtUtc = now,
                 UpdatedAtUtc = now
@@ -40,7 +41,7 @@ internal static class CaseWorkflow
         {
             Id = Guid.NewGuid(),
             CaseId = open.Id,
-            Kind = "report",
+            Kind = CaseEventKinds.Report,
             Body = "Житель: не приехала",
             StopId = stop.Id,
             StopLabel = stop.SettlementName,

@@ -23,7 +23,7 @@ public static class CaseEndpoints
                 }
                 else
                 {
-                    query = query.Where(c => c.Status == "open" || c.Status == "in_progress");
+                    query = query.Where(c => c.Status == CaseStatuses.Open || c.Status == CaseStatuses.InProgress);
                 }
 
                 var items = await query
@@ -68,7 +68,7 @@ public static class CaseEndpoints
                 {
                     Id = Guid.NewGuid(),
                     CaseId = item.Id,
-                    Kind = "comment",
+                    Kind = CaseEventKinds.Comment,
                     Body = body,
                     AuthorName = principal.FindFirstValue("name") ?? principal.Identity?.Name,
                     AuthorEmail = principal.FindFirstValue(ClaimTypes.Email) ?? principal.FindFirstValue("email"),
@@ -88,7 +88,7 @@ public static class CaseEndpoints
                 RoutingDbContext db) =>
             {
                 var status = (request.Status ?? "").Trim().ToLowerInvariant();
-                if (status is not ("open" or "in_progress" or "closed"))
+                if (!CaseStatuses.IsKnown(status))
                 {
                     return Results.BadRequest(new { error = "status: open, in_progress или closed" });
                 }
@@ -108,15 +108,9 @@ public static class CaseEndpoints
                 var from = item.Status;
                 item.Status = status;
                 item.UpdatedAtUtc = now;
-                item.ClosedAtUtc = status == "closed" ? now : null;
+                item.ClosedAtUtc = status == CaseStatuses.Closed ? now : null;
 
-                var label = status switch
-                {
-                    "open" => "открыта",
-                    "in_progress" => "в процессе",
-                    "closed" => "закрыта",
-                    _ => status
-                };
+                var label = CaseStatuses.Title(status);
                 var note = string.IsNullOrWhiteSpace(request.Comment)
                     ? $"Статус: {label}"
                     : $"Статус: {label}. {request.Comment.Trim()}";
@@ -125,7 +119,7 @@ public static class CaseEndpoints
                 {
                     Id = Guid.NewGuid(),
                     CaseId = item.Id,
-                    Kind = "status",
+                    Kind = CaseEventKinds.Status,
                     Body = note,
                     AuthorName = principal.FindFirstValue("name") ?? principal.Identity?.Name,
                     AuthorEmail = principal.FindFirstValue(ClaimTypes.Email) ?? principal.FindFirstValue("email"),

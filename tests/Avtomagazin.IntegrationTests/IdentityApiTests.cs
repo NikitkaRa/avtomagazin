@@ -442,6 +442,19 @@ public class IdentityApiTests : IClassFixture<IdentityApiFactory>
     }
 
     [Fact]
+    public async Task Assign_vehicle_can_clear_driver()
+    {
+        var van = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+        var driverId = await RegisterApproveDriverAsync($"drv-clear-{Guid.NewGuid():N}@demo.by", van);
+
+        using var admin = await AuthedAsync("admin@demo.by");
+        var clear = await admin.PostAsJsonAsync($"/api/users/{driverId}/assign-vehicle", new { vehicleId = (Guid?)null });
+        Assert.Equal(HttpStatusCode.OK, clear.StatusCode);
+        using var body = JsonDocument.Parse(await clear.Content.ReadAsStringAsync());
+        Assert.Equal(JsonValueKind.Null, body.RootElement.GetProperty("vehicleId").ValueKind);
+    }
+
+    [Fact]
     public async Task Assign_vehicle_rejects_operator_and_pending()
     {
         using var admin = await AuthedAsync("admin@demo.by");
