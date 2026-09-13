@@ -92,25 +92,23 @@ dotnet build src/Apps/Avtomagazin.ResidentApp/Avtomagazin.ResidentApp.csproj -c 
 dotnet run --project src/Apps/Avtomagazin.Admin --launch-profile staging
 ```
 
-Сценарий для комиссии: `DEMO.md`
-
 ### 3. Проверка
 
 ```bash
 # регистрация жителя — сразу JWT
 curl -s http://localhost:5100/identity/api/auth/register \
   -H 'Content-Type: application/json' \
-  -d '{"email":"marina@demo.by","password":"secret12","name":"Марина","client":"resident"}'
+  -d '{"email":"marina@example.com","password":"secret12","name":"Марина","client":"resident"}'
 
 # заявка водителя — без JWT, ждёт админа
 curl -s http://localhost:5100/identity/api/auth/register \
   -H 'Content-Type: application/json' \
-  -d '{"email":"petr@demo.by","password":"secret12","name":"Пётр","client":"staff","staffRole":"driver"}'
+  -d '{"email":"petr@example.com","password":"secret12","name":"Пётр","client":"staff","staffRole":"driver"}'
 
-# логин
+# логин (в Development есть fixture-аккаунты *@test.local / testpass1)
 curl -s http://localhost:5100/identity/api/auth/login \
   -H 'Content-Type: application/json' \
-  -d '{"email":"resident@demo.by","password":"demo"}'
+  -d '{"email":"resident@test.local","password":"testpass1"}'
 
 # автолавки
 curl -s http://localhost:5100/fleet/api/vehicles
@@ -119,10 +117,10 @@ curl -s http://localhost:5100/fleet/api/vehicles
 curl -s http://localhost:5100/notifications/api/devices/register \
   -H 'Authorization: Bearer <token>' \
   -H 'Content-Type: application/json' \
-  -d '{"deviceToken":"demo-token-1","platform":"ios","settlementName":"Индура"}'
+  -d '{"deviceToken":"device-token-1","platform":"ios","settlementName":"Индура"}'
 ```
 
-Демо-пользователи (только Development) уже **активны**, пароль `demo`: `resident@demo.by` / `driver@demo.by` / `seller@demo.by` / `operator@demo.by` / `admin@demo.by`.
+В Development автоматически создаются fixture-пользователи (пароль `testpass1`): `resident@test.local`, `driver@test.local`, `seller@test.local`, `operator@test.local`, `admin@test.local`. В Production — только bootstrap-админ из `.env`.
 
 Новая регистрация: житель (`client=resident`) входит сразу; водитель и диспетчер (`client=staff`, `staffRole=driver|operator`) ждут `POST /identity/api/users/{id}/approve` от админа. Водителю при подтверждении нужна автолавка. Пароль от 8 символов.
 
@@ -139,7 +137,7 @@ API `:8080`, админка `:8081`. Postgres/Rabbit наружу не торч�
 
 ## Куда расширять
 
-1. **GPS** — реализовать `IGpsProvider` под Wialon/Traccar, оставить mock для демо.
+1. **GPS** — реализовать `IGpsProvider` под Wialon/Traccar; mock остаётся для локальной разработки.
 2. **Пуши** — `IPushSender` → FCM/APNs.
 3. **Гос** — `IGovIntegration` → контракт «Умный город» / OpenAPI от Минсвязи.
 4. **Моб** — два бинарника MAUI (житель / персонал), общая `MauiShared` + `ApiClient`.

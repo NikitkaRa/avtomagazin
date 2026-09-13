@@ -193,11 +193,10 @@ public static class Seed
         await EnsureGrodnoRouteAsync(db);
         await EnsurePukhovichiRouteAsync(db);
         await EnsureOzerichinoLoopRoutesAsync(db);
-        await EnsureBelarusHeatRouteAsync(db);
     }
 
     /// <summary>
-    /// Demo driver (Гродно) trip — timings match ~30 km/h from the seeded van near Grodno.
+    /// Гродно trip — timings match ~30 km/h from the seeded van near Grodno.
     /// Existing rows are left alone so a restart cannot teleport stops or rewind the day.
     /// </summary>
     private static async Task EnsureGrodnoRouteAsync(RoutingDbContext db)
@@ -221,51 +220,6 @@ public static class Seed
             "Озёры", "BY-HR", 53.7200, 24.1800, now.AddMinutes(100));
         InsertStop(db, routeId, Guid.Parse("dddddddd-dddd-dddd-dddd-ddddddddddd3"), 3,
             "Скидель", "BY-HR", 53.5900, 24.2500, now.AddMinutes(145));
-        await db.SaveChangesAsync();
-    }
-
-    private static async Task EnsureBelarusHeatRouteAsync(RoutingDbContext db)
-    {
-        var routeId = DemoHeatCatalog.HeatRouteId;
-        var existing = await db.Routes.FirstOrDefaultAsync(r => r.Id == routeId);
-        if (existing is not null)
-        {
-            if (!existing.IsCatalog)
-            {
-                existing.IsCatalog = true;
-                await db.SaveChangesAsync();
-            }
-
-            return;
-        }
-
-        db.Routes.Add(new TradeRoute
-        {
-            Id = routeId,
-            Name = "Беларусь — избранное",
-            VehicleId = DemoHeatCatalog.HeatVehicleId,
-            IsCatalog = true
-        });
-
-        var now = DateTimeOffset.UtcNow;
-        var places = DemoHeatCatalog.Places;
-        for (var i = 0; i < places.Count; i++)
-        {
-            var place = places[i];
-            var jitterLat = ((i % 7) - 3) * 0.012;
-            var jitterLng = ((i % 5) - 2) * 0.015;
-            InsertStop(
-                db,
-                routeId,
-                DemoHeatCatalog.StopId(i),
-                i + 1,
-                place.Name,
-                place.Region,
-                place.Lat + jitterLat,
-                place.Lng + jitterLng,
-                now.AddMinutes(20 + i * 12));
-        }
-
         await db.SaveChangesAsync();
     }
 

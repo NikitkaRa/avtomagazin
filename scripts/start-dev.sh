@@ -43,5 +43,4 @@ lan="$(ipconfig getifaddr en0 2>/dev/null || true)"
 if [[ -n "${lan}" ]]; then
   echo "  В Wi‑Fi сети админка: http://${lan}:5200"
 fi
-echo "Сценарий показа: DEMO.md"
 echo "Stop with: ./scripts/stop-dev.sh"

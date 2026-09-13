@@ -51,11 +51,6 @@ using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<NotificationsDbContext>();
     await RelationalSchema.ApplyAsync(db);
-
-    if (app.Environment.IsDevelopment())
-    {
-        await HeatSeed.EnsureAsync(db);
-    }
 }
 
 app.MapNotificationApi();

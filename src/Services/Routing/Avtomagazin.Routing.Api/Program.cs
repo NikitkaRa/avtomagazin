@@ -40,10 +40,10 @@ using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<RoutingDbContext>();
     await RelationalSchema.ApplyAsync(db);
-    var seedDemo = app.Configuration.GetValue(
-        "Seed:DemoData",
+    var seedSample = app.Configuration.GetValue(
+        "Seed:SampleData",
         app.Environment.IsDevelopment() || app.Environment.IsEnvironment("Testing"));
-    if (seedDemo)
+    if (seedSample)
     {
         await Seed.EnsureSeedAsync(db);
     }

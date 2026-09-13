@@ -21,7 +21,7 @@ internal static class TestJwt
     {
         var id = userId ?? Guid.NewGuid();
         var credentials = new SigningCredentials(
-            new SymmetricSecurityKey(Encoding.UTF8.GetBytes(DeploySecrets.DemoJwtKey)),
+            new SymmetricSecurityKey(Encoding.UTF8.GetBytes(DeploySecrets.DevJwtKey)),
             SecurityAlgorithms.HmacSha256);
 
         var claims = new List<Claim>

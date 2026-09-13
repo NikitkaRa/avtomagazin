@@ -76,7 +76,6 @@ services:
       RabbitMq__Host: rabbitmq
       RabbitMq__Username: avtomagazin
       RabbitMq__Password: ${POSTGRES_PASSWORD}
-      Seed__DemoUsers: "false"
       Bootstrap__AdminEmail: ${ADMIN_EMAIL}
       Bootstrap__AdminPassword: ${ADMIN_PASSWORD}
       Storage__Endpoint: http://minio:9000

@@ -18,7 +18,7 @@ public class FcmPushSenderTests
         var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
         {
             ["Fcm:ServiceAccountJson"] =
-                """{"project_id":"demo","client_email":"fcm@demo.iam.gserviceaccount.com","private_key":"-----BEGIN PRIVATE KEY-----\nMIIB\n-----END PRIVATE KEY-----\n"}"""
+                """{"project_id":"test","client_email":"fcm@test.iam.gserviceaccount.com","private_key":"-----BEGIN PRIVATE KEY-----\nMIIB\n-----END PRIVATE KEY-----\n"}"""
         }).Build();
         Assert.True(FcmPushSender.IsConfigured(config));
     }

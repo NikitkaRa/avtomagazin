@@ -3,7 +3,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <Configurations>Debug;Staging;Release</Configurations>
-    <!-- Transitive Microsoft.OpenApi CVE until ASP.NET OpenApi package bumps; local demo only -->
+    <!-- Transitive Microsoft.OpenApi CVE until ASP.NET OpenApi package bumps -->
     <NoWarn>$(NoWarn);NU1903</NoWarn>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)' == 'Debug'">

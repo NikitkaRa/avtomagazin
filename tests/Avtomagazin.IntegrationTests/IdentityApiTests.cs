@@ -16,12 +16,12 @@ public class IdentityApiTests : IClassFixture<IdentityApiFactory>
     }
 
     [Fact]
-    public async Task Login_with_demo_user_returns_jwt()
+    public async Task Login_with_fixture_user_returns_jwt()
     {
         var response = await _client.PostAsJsonAsync("/api/auth/login", new
         {
-            email = "resident@demo.by",
-            password = "demo"
+            email = "resident@test.local",
+            password = "testpass1"
         });
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -37,8 +37,8 @@ public class IdentityApiTests : IClassFixture<IdentityApiFactory>
     {
         var response = await _client.PostAsJsonAsync("/api/auth/login", new
         {
-            email = "seller@demo.by",
-            password = "demo"
+            email = "seller@test.local",
+            password = "testpass1"
         });
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -54,7 +54,7 @@ public class IdentityApiTests : IClassFixture<IdentityApiFactory>
     {
         var response = await _client.PostAsJsonAsync("/api/auth/login", new
         {
-            email = "resident@demo.by",
+            email = "resident@test.local",
             password = "wrong"
         });
 
@@ -64,7 +64,7 @@ public class IdentityApiTests : IClassFixture<IdentityApiFactory>
     [Fact]
     public async Task Register_creates_resident_and_cannot_pick_staff_role()
     {
-        var email = $"user-{Guid.NewGuid():N}@demo.by";
+        var email = $"user-{Guid.NewGuid():N}@test.local";
         var response = await _client.PostAsJsonAsync("/api/auth/register", new
         {
             email,
@@ -84,7 +84,7 @@ public class IdentityApiTests : IClassFixture<IdentityApiFactory>
     [Fact]
     public async Task Register_staff_is_pending_until_admin_approves()
     {
-        var email = $"driver-{Guid.NewGuid():N}@demo.by";
+        var email = $"driver-{Guid.NewGuid():N}@test.local";
         var register = await _client.PostAsJsonAsync("/api/auth/register", new
         {
             email,
@@ -104,7 +104,7 @@ public class IdentityApiTests : IClassFixture<IdentityApiFactory>
         var pendingLogin = await _client.PostAsJsonAsync("/api/auth/login", new { email, password = "secret12" });
         Assert.Equal(HttpStatusCode.Forbidden, pendingLogin.StatusCode);
 
-        using var admin = await AuthedAsync("admin@demo.by");
+        using var admin = await AuthedAsync("admin@test.local");
         var approve = await admin.PostAsJsonAsync($"/api/users/{userId}/approve", new
         {
             role = "driver",
@@ -124,7 +124,7 @@ public class IdentityApiTests : IClassFixture<IdentityApiFactory>
     {
         var response = await _client.PostAsJsonAsync("/api/auth/register", new
         {
-            email = $"staff-{Guid.NewGuid():N}@demo.by",
+            email = $"staff-{Guid.NewGuid():N}@test.local",
             password = "secret12",
             client = "staff"
         });
@@ -137,7 +137,7 @@ public class IdentityApiTests : IClassFixture<IdentityApiFactory>
     {
         var response = await _client.PostAsJsonAsync("/api/auth/register", new
         {
-            email = $"boss-{Guid.NewGuid():N}@demo.by",
+            email = $"boss-{Guid.NewGuid():N}@test.local",
             password = "secret12",
             client = "staff",
             staffRole = "admin"
@@ -152,11 +152,11 @@ public class IdentityApiTests : IClassFixture<IdentityApiFactory>
         var anonymous = await _client.GetAsync("/api/users");
         Assert.Equal(HttpStatusCode.Unauthorized, anonymous.StatusCode);
 
-        using var dispatcher = await AuthedAsync("operator@demo.by");
+        using var dispatcher = await AuthedAsync("operator@test.local");
         var forbidden = await dispatcher.GetAsync("/api/users");
         Assert.Equal(HttpStatusCode.Forbidden, forbidden.StatusCode);
 
-        using var admin = await AuthedAsync("admin@demo.by");
+        using var admin = await AuthedAsync("admin@test.local");
         var ok = await admin.GetAsync("/api/users");
         Assert.Equal(HttpStatusCode.OK, ok.StatusCode);
         using var page = JsonDocument.Parse(await ok.Content.ReadAsStringAsync());
@@ -168,7 +168,7 @@ public class IdentityApiTests : IClassFixture<IdentityApiFactory>
     [Fact]
     public async Task Users_list_staff_kind_excludes_residents()
     {
-        using var admin = await AuthedAsync("admin@demo.by");
+        using var admin = await AuthedAsync("admin@test.local");
         var response = await admin.GetAsync("/api/users?kind=staff&take=200");
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
@@ -181,7 +181,7 @@ public class IdentityApiTests : IClassFixture<IdentityApiFactory>
     [Fact]
     public async Task Refresh_returns_new_access_token()
     {
-        using var client = await AuthedAsync("resident@demo.by");
+        using var client = await AuthedAsync("resident@test.local");
         var refresh = await client.PostAsJsonAsync("/api/auth/refresh", new { });
         Assert.Equal(HttpStatusCode.OK, refresh.StatusCode);
         using var doc = JsonDocument.Parse(await refresh.Content.ReadAsStringAsync());
@@ -193,7 +193,7 @@ public class IdentityApiTests : IClassFixture<IdentityApiFactory>
     [Fact]
     public async Task Admin_can_reject_pending_and_disable_active_staff()
     {
-        var email = $"disp-{Guid.NewGuid():N}@demo.by";
+        var email = $"disp-{Guid.NewGuid():N}@test.local";
         var register = await _client.PostAsJsonAsync("/api/auth/register", new
         {
             email,
@@ -205,14 +205,14 @@ public class IdentityApiTests : IClassFixture<IdentityApiFactory>
         using var created = JsonDocument.Parse(await register.Content.ReadAsStringAsync());
         var pendingId = created.RootElement.GetProperty("userId").GetGuid();
 
-        using var admin = await AuthedAsync("admin@demo.by");
+        using var admin = await AuthedAsync("admin@test.local");
         var reject = await admin.PostAsJsonAsync($"/api/users/{pendingId}/reject", new { });
         Assert.Equal(HttpStatusCode.NoContent, reject.StatusCode);
 
         var gone = await _client.PostAsJsonAsync("/api/auth/login", new { email, password = "secret12" });
         Assert.Equal(HttpStatusCode.Unauthorized, gone.StatusCode);
 
-        var keepEmail = $"keep-{Guid.NewGuid():N}@demo.by";
+        var keepEmail = $"keep-{Guid.NewGuid():N}@test.local";
         var keep = await _client.PostAsJsonAsync("/api/auth/register", new
         {
             email = keepEmail,
@@ -235,7 +235,7 @@ public class IdentityApiTests : IClassFixture<IdentityApiFactory>
     private async Task<HttpClient> AuthedAsync(string email)
     {
         var client = _factory.CreateClient();
-        var login = await client.PostAsJsonAsync("/api/auth/login", new { email, password = "demo" });
+        var login = await client.PostAsJsonAsync("/api/auth/login", new { email, password = "testpass1" });
         login.EnsureSuccessStatusCode();
         using var doc = JsonDocument.Parse(await login.Content.ReadAsStringAsync());
         client.DefaultRequestHeaders.Authorization =
@@ -248,7 +248,7 @@ public class IdentityApiTests : IClassFixture<IdentityApiFactory>
     [Fact]
     public async Task Register_duplicate_email_returns_conflict()
     {
-        var email = $"dup-{Guid.NewGuid():N}@demo.by";
+        var email = $"dup-{Guid.NewGuid():N}@test.local";
         var body = new { email, password = "secret12", name = "A" };
         var first = await _client.PostAsJsonAsync("/api/auth/register", body);
         Assert.Equal(HttpStatusCode.OK, first.StatusCode);
@@ -262,8 +262,8 @@ public class IdentityApiTests : IClassFixture<IdentityApiFactory>
         using var client = _factory.CreateClient();
         var login = await client.PostAsJsonAsync("/api/auth/login", new
         {
-            email = "resident@demo.by",
-            password = "demo"
+            email = "resident@test.local",
+            password = "testpass1"
         });
         using var doc = JsonDocument.Parse(await login.Content.ReadAsStringAsync());
         var token = doc.RootElement.GetProperty("accessToken").GetString();
@@ -273,7 +273,7 @@ public class IdentityApiTests : IClassFixture<IdentityApiFactory>
         var me = await client.GetAsync("/api/auth/me");
         Assert.Equal(HttpStatusCode.OK, me.StatusCode);
         using var meDoc = JsonDocument.Parse(await me.Content.ReadAsStringAsync());
-        Assert.Equal("resident@demo.by", meDoc.RootElement.GetProperty("email").GetString());
+        Assert.Equal("resident@test.local", meDoc.RootElement.GetProperty("email").GetString());
         Assert.Equal("resident", meDoc.RootElement.GetProperty("role").GetString());
     }
 
@@ -291,16 +291,16 @@ public class IdentityApiTests : IClassFixture<IdentityApiFactory>
     public async Task Request_id_is_echoed()
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, "/alive");
-        request.Headers.TryAddWithoutValidation("X-Request-Id", "demo-request-123");
+        request.Headers.TryAddWithoutValidation("X-Request-Id", "request-123");
         var response = await _client.SendAsync(request);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.Equal("demo-request-123", response.Headers.GetValues("X-Request-Id").Single());
+        Assert.Equal("request-123", response.Headers.GetValues("X-Request-Id").Single());
     }
 
     [Fact]
     public async Task Disable_rejects_old_jwt()
     {
-        var email = $"revoked-{Guid.NewGuid():N}@demo.by";
+        var email = $"revoked-{Guid.NewGuid():N}@test.local";
         var register = await _client.PostAsJsonAsync("/api/auth/register", new
         {
             email,
@@ -311,7 +311,7 @@ public class IdentityApiTests : IClassFixture<IdentityApiFactory>
         using var created = JsonDocument.Parse(await register.Content.ReadAsStringAsync());
         var id = created.RootElement.GetProperty("userId").GetGuid();
 
-        using var admin = await AuthedAsync("admin@demo.by");
+        using var admin = await AuthedAsync("admin@test.local");
         Assert.Equal(HttpStatusCode.OK, (await admin.PostAsJsonAsync($"/api/users/{id}/approve", new { })).StatusCode);
 
         using var staff = _factory.CreateClient();
@@ -331,7 +331,7 @@ public class IdentityApiTests : IClassFixture<IdentityApiFactory>
     [Fact]
     public async Task Approve_driver_without_van_fails()
     {
-        var email = $"novan-{Guid.NewGuid():N}@demo.by";
+        var email = $"novan-{Guid.NewGuid():N}@test.local";
         var register = await _client.PostAsJsonAsync("/api/auth/register", new
         {
             email,
@@ -342,7 +342,7 @@ public class IdentityApiTests : IClassFixture<IdentityApiFactory>
         using var created = JsonDocument.Parse(await register.Content.ReadAsStringAsync());
         var id = created.RootElement.GetProperty("userId").GetGuid();
 
-        using var admin = await AuthedAsync("admin@demo.by");
+        using var admin = await AuthedAsync("admin@test.local");
         var approve = await admin.PostAsJsonAsync($"/api/users/{id}/approve", new { role = "driver" });
         Assert.Equal(HttpStatusCode.BadRequest, approve.StatusCode);
     }
@@ -352,7 +352,7 @@ public class IdentityApiTests : IClassFixture<IdentityApiFactory>
     {
         var response = await _client.PostAsJsonAsync("/api/auth/register", new
         {
-            email = $"short-{Guid.NewGuid():N}@demo.by",
+            email = $"short-{Guid.NewGuid():N}@test.local",
             password = "1234567",
             client = "resident"
         });
@@ -362,7 +362,7 @@ public class IdentityApiTests : IClassFixture<IdentityApiFactory>
     [Fact]
     public async Task Change_password_issues_new_jwt_and_kills_old()
     {
-        var email = $"pwd-{Guid.NewGuid():N}@demo.by";
+        var email = $"pwd-{Guid.NewGuid():N}@test.local";
         var register = await _client.PostAsJsonAsync("/api/auth/register", new
         {
             email,
@@ -406,7 +406,7 @@ public class IdentityApiTests : IClassFixture<IdentityApiFactory>
     [Fact]
     public async Task Admin_can_reset_staff_password_but_not_admin()
     {
-        var email = $"reset-{Guid.NewGuid():N}@demo.by";
+        var email = $"reset-{Guid.NewGuid():N}@test.local";
         var register = await _client.PostAsJsonAsync("/api/auth/register", new
         {
             email,
@@ -417,7 +417,7 @@ public class IdentityApiTests : IClassFixture<IdentityApiFactory>
         using var created = JsonDocument.Parse(await register.Content.ReadAsStringAsync());
         var id = created.RootElement.GetProperty("userId").GetGuid();
 
-        using var admin = await AuthedAsync("admin@demo.by");
+        using var admin = await AuthedAsync("admin@test.local");
         Assert.Equal(HttpStatusCode.OK, (await admin.PostAsJsonAsync($"/api/users/{id}/approve", new { })).StatusCode);
 
         var reset = await admin.PostAsJsonAsync($"/api/users/{id}/password", new { password = "resetpass" });
@@ -432,7 +432,7 @@ public class IdentityApiTests : IClassFixture<IdentityApiFactory>
         Guid? adminId = null;
         foreach (var u in UserRows(users))
         {
-            if (u.GetProperty("email").GetString() == "admin@demo.by")
+            if (u.GetProperty("email").GetString() == "admin@test.local")
             {
                 adminId = u.GetProperty("id").GetGuid();
             }
@@ -448,10 +448,10 @@ public class IdentityApiTests : IClassFixture<IdentityApiFactory>
     {
         var van = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
         var otherVan = Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
-        var first = await RegisterApproveDriverAsync($"drv-a-{Guid.NewGuid():N}@demo.by", van);
-        var second = await RegisterApproveDriverAsync($"drv-b-{Guid.NewGuid():N}@demo.by", otherVan);
+        var first = await RegisterApproveDriverAsync($"drv-a-{Guid.NewGuid():N}@test.local", van);
+        var second = await RegisterApproveDriverAsync($"drv-b-{Guid.NewGuid():N}@test.local", otherVan);
 
-        using var admin = await AuthedAsync("admin@demo.by");
+        using var admin = await AuthedAsync("admin@test.local");
         var assign = await admin.PostAsJsonAsync($"/api/users/{second}/assign-vehicle", new { vehicleId = van });
         Assert.Equal(HttpStatusCode.OK, assign.StatusCode);
         using var assigned = JsonDocument.Parse(await assign.Content.ReadAsStringAsync());
@@ -476,9 +476,9 @@ public class IdentityApiTests : IClassFixture<IdentityApiFactory>
     public async Task Assign_vehicle_can_clear_driver()
     {
         var van = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
-        var driverId = await RegisterApproveDriverAsync($"drv-clear-{Guid.NewGuid():N}@demo.by", van);
+        var driverId = await RegisterApproveDriverAsync($"drv-clear-{Guid.NewGuid():N}@test.local", van);
 
-        using var admin = await AuthedAsync("admin@demo.by");
+        using var admin = await AuthedAsync("admin@test.local");
         var clear = await admin.PostAsJsonAsync($"/api/users/{driverId}/assign-vehicle", new { vehicleId = (Guid?)null });
         Assert.Equal(HttpStatusCode.OK, clear.StatusCode);
         using var body = JsonDocument.Parse(await clear.Content.ReadAsStringAsync());
@@ -489,9 +489,9 @@ public class IdentityApiTests : IClassFixture<IdentityApiFactory>
     public async Task Disable_driver_clears_vehicle()
     {
         var van = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
-        var driverId = await RegisterApproveDriverAsync($"drv-off-{Guid.NewGuid():N}@demo.by", van);
+        var driverId = await RegisterApproveDriverAsync($"drv-off-{Guid.NewGuid():N}@test.local", van);
 
-        using var admin = await AuthedAsync("admin@demo.by");
+        using var admin = await AuthedAsync("admin@test.local");
         Assert.Equal(HttpStatusCode.OK, (await admin.PostAsJsonAsync($"/api/users/{driverId}/disable", new { })).StatusCode);
 
         var users = await admin.GetFromJsonAsync<JsonElement>("/api/users");
@@ -513,8 +513,8 @@ public class IdentityApiTests : IClassFixture<IdentityApiFactory>
     public async Task Approve_driver_clears_previous_on_same_van()
     {
         var van = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
-        var first = await RegisterApproveDriverAsync($"drv-ap1-{Guid.NewGuid():N}@demo.by", van);
-        var email = $"drv-ap2-{Guid.NewGuid():N}@demo.by";
+        var first = await RegisterApproveDriverAsync($"drv-ap1-{Guid.NewGuid():N}@test.local", van);
+        var email = $"drv-ap2-{Guid.NewGuid():N}@test.local";
         var register = await _client.PostAsJsonAsync("/api/auth/register", new
         {
             email,
@@ -527,7 +527,7 @@ public class IdentityApiTests : IClassFixture<IdentityApiFactory>
         using var created = JsonDocument.Parse(await register.Content.ReadAsStringAsync());
         var second = created.RootElement.GetProperty("userId").GetGuid();
 
-        using var admin = await AuthedAsync("admin@demo.by");
+        using var admin = await AuthedAsync("admin@test.local");
         Assert.Equal(HttpStatusCode.OK, (await admin.PostAsJsonAsync($"/api/users/{second}/approve", new
         {
             role = "driver",
@@ -552,12 +552,12 @@ public class IdentityApiTests : IClassFixture<IdentityApiFactory>
     [Fact]
     public async Task Assign_vehicle_rejects_operator_and_pending()
     {
-        using var admin = await AuthedAsync("admin@demo.by");
+        using var admin = await AuthedAsync("admin@test.local");
         var users = await admin.GetFromJsonAsync<JsonElement>("/api/users");
         Guid? operatorId = null;
         foreach (var u in UserRows(users))
         {
-            if (u.GetProperty("email").GetString() == "operator@demo.by")
+            if (u.GetProperty("email").GetString() == "operator@test.local")
             {
                 operatorId = u.GetProperty("id").GetGuid();
             }
@@ -568,7 +568,7 @@ public class IdentityApiTests : IClassFixture<IdentityApiFactory>
             $"/api/users/{operatorId}/assign-vehicle",
             new { vehicleId = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa") })).StatusCode);
 
-        var email = $"pend-{Guid.NewGuid():N}@demo.by";
+        var email = $"pend-{Guid.NewGuid():N}@test.local";
         var register = await _client.PostAsJsonAsync("/api/auth/register", new
         {
             email,
@@ -598,7 +598,7 @@ public class IdentityApiTests : IClassFixture<IdentityApiFactory>
         using var created = JsonDocument.Parse(await register.Content.ReadAsStringAsync());
         var id = created.RootElement.GetProperty("userId").GetGuid();
 
-        using var admin = await AuthedAsync("admin@demo.by");
+        using var admin = await AuthedAsync("admin@test.local");
         var approve = await admin.PostAsJsonAsync($"/api/users/{id}/approve", new
         {
             role = "driver",

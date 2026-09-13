@@ -91,8 +91,8 @@ public sealed class HttpSessionGuard(
 
 public static class DeploySecrets
 {
-    public const string DemoJwtKey = "dev-only-change-me-avtomagazin-super-secret-key-32b";
-    public const string DemoInternalKey = "dev-internal-key";
+    public const string DevJwtKey = "dev-only-change-me-avtomagazin-super-secret-key-32b";
+    public const string DevInternalKey = "dev-internal-key";
 
     public static string JwtKey(IConfiguration config, IHostEnvironment env)
     {
@@ -101,7 +101,7 @@ public static class DeploySecrets
         {
             if (IsPublic(env) && !IsStrongJwt(key))
             {
-                throw new InvalidOperationException("Jwt:Key must be 32+ chars and not the demo key.");
+                throw new InvalidOperationException("Jwt:Key must be 32+ chars and not the development fallback key.");
             }
 
             return key;
@@ -112,7 +112,7 @@ public static class DeploySecrets
             throw new InvalidOperationException("Jwt:Key is required.");
         }
 
-        return DemoJwtKey;
+        return DevJwtKey;
     }
 
     public static string ConnectionString(IConfiguration config, IHostEnvironment env, string name, string? devFallback)
@@ -139,9 +139,9 @@ public static class DeploySecrets
         }
 
         var key = config["Internal:Key"];
-        if (string.IsNullOrWhiteSpace(key) || key == DemoInternalKey)
+        if (string.IsNullOrWhiteSpace(key) || key == DevInternalKey)
         {
-            throw new InvalidOperationException("Internal:Key is required and must not be the demo value.");
+            throw new InvalidOperationException("Internal:Key is required and must not be the development fallback value.");
         }
     }
 
@@ -149,5 +149,5 @@ public static class DeploySecrets
         => env.IsProduction() || env.IsEnvironment("Staging");
 
     private static bool IsStrongJwt(string key)
-        => key.Length >= 32 && !string.Equals(key, DemoJwtKey, StringComparison.Ordinal);
+        => key.Length >= 32 && !string.Equals(key, DevJwtKey, StringComparison.Ordinal);
 }

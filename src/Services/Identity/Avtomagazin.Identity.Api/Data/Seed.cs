@@ -6,24 +6,27 @@ namespace Avtomagazin.Identity.Api.Data;
 
 internal static class Seed
 {
+    public const string FixturePassword = "testpass1";
+
     private static readonly PasswordHasher<AppUser> Hasher = new();
 
-    public static async Task EnsureDemoUsersAsync(IdentityDbContext db)
+    /// <summary>Local/Testing accounts so integration tests and empty DBs have roles to exercise.</summary>
+    public static async Task EnsureFixtureUsersAsync(IdentityDbContext db)
     {
         var grodnoVan = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
         var pukhovichiVan = Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
-        var demo =
+        var rows =
             new (Guid Id, string Email, string Name, string Role, Guid? VehicleId)[]
             {
-                (Guid.Parse("11111111-1111-1111-1111-111111111111"), "resident@demo.by", "Житель", Roles.Resident, null),
-                (Guid.Parse("22222222-2222-2222-2222-222222222222"), "driver@demo.by", "Водитель Озеричино", Roles.Driver, pukhovichiVan),
-                (Guid.Parse("55555555-5555-5555-5555-555555555555"), "seller@demo.by", "Продавец Озеричино", Roles.Seller, pukhovichiVan),
-                (Guid.Parse("66666666-6666-6666-6666-666666666666"), "driver2@demo.by", "Водитель Гродно", Roles.Driver, grodnoVan),
-                (Guid.Parse("33333333-3333-3333-3333-333333333333"), "operator@demo.by", "Диспетчер", Roles.Operator, null),
-                (Guid.Parse("44444444-4444-4444-4444-444444444444"), "admin@demo.by", "Админ", Roles.Admin, null)
+                (Guid.Parse("11111111-1111-1111-1111-111111111111"), "resident@test.local", "Житель", Roles.Resident, null),
+                (Guid.Parse("22222222-2222-2222-2222-222222222222"), "driver@test.local", "Водитель Озеричино", Roles.Driver, pukhovichiVan),
+                (Guid.Parse("55555555-5555-5555-5555-555555555555"), "seller@test.local", "Продавец Озеричино", Roles.Seller, pukhovichiVan),
+                (Guid.Parse("66666666-6666-6666-6666-666666666666"), "driver2@test.local", "Водитель Гродно", Roles.Driver, grodnoVan),
+                (Guid.Parse("33333333-3333-3333-3333-333333333333"), "operator@test.local", "Диспетчер", Roles.Operator, null),
+                (Guid.Parse("44444444-4444-4444-4444-444444444444"), "admin@test.local", "Админ", Roles.Admin, null)
             };
 
-        foreach (var row in demo)
+        foreach (var row in rows)
         {
             if (await db.Users.AnyAsync(u => u.Email == row.Email))
             {
@@ -43,54 +46,11 @@ internal static class Seed
                 CreatedAtUtc = DateTimeOffset.UtcNow,
                 ApprovedAtUtc = DateTimeOffset.UtcNow
             };
-            user.PasswordHash = Hasher.HashPassword(user, "demo");
+            user.PasswordHash = Hasher.HashPassword(user, FixturePassword);
             db.Users.Add(user);
         }
 
         await db.SaveChangesAsync();
-    }
-
-    public static async Task EnsureHeatResidentsAsync(IdentityDbContext db)
-    {
-        var marker = DemoHeatCatalog.ResidentId(0);
-        if (await db.Users.AnyAsync(u => u.Id == marker))
-        {
-            return;
-        }
-
-        var now = DateTimeOffset.UtcNow;
-        var proto = new AppUser
-        {
-            Id = marker,
-            Email = "heat0@demo.by",
-            DisplayName = "Житель",
-            Role = Roles.Resident,
-            Status = UserStatuses.Active,
-            PasswordHash = ""
-        };
-        var hash = Hasher.HashPassword(proto, "demo");
-        const int batch = 200;
-        for (var start = 0; start < DemoHeatCatalog.ResidentCount; start += batch)
-        {
-            var end = Math.Min(start + batch, DemoHeatCatalog.ResidentCount);
-            for (var i = start; i < end; i++)
-            {
-                db.Users.Add(new AppUser
-                {
-                    Id = DemoHeatCatalog.ResidentId(i),
-                    Email = $"heat{i}@demo.by",
-                    DisplayName = $"Житель {i + 1}",
-                    Role = Roles.Resident,
-                    Status = UserStatuses.Active,
-                    PasswordHash = hash,
-                    TokenVersion = 1,
-                    CreatedAtUtc = now,
-                    ApprovedAtUtc = now
-                });
-            }
-
-            await db.SaveChangesAsync();
-        }
     }
 
     public static async Task EnsureBootstrapAdminAsync(IdentityDbContext db, IConfiguration config)

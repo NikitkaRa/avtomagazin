@@ -50,7 +50,7 @@
         "header": [{ "key": "Content-Type", "value": "application/json" }],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"email\": \"new-{{$guid}}@demo.by\",\n  \"password\": \"secret12\",\n  \"name\": \"Марина\",\n  \"client\": \"resident\"\n}"
+          "raw": "{\n  \"email\": \"new-{{$guid}}@test.local\",\n  \"password\": \"secret12\",\n  \"name\": \"Марина\",\n  \"client\": \"resident\"\n}"
         },
         "url": "{{baseUrl}}/identity/api/auth/register"
       }
@@ -78,7 +78,7 @@
         "header": [{ "key": "Content-Type", "value": "application/json" }],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"email\": \"staff-{{$guid}}@demo.by\",\n  \"password\": \"secret12\",\n  \"name\": \"Пётр\",\n  \"client\": \"staff\",\n  \"staffRole\": \"driver\"\n}"
+          "raw": "{\n  \"email\": \"staff-{{$guid}}@test.local\",\n  \"password\": \"secret12\",\n  \"name\": \"Пётр\",\n  \"client\": \"staff\",\n  \"staffRole\": \"driver\"\n}"
         },
         "url": "{{baseUrl}}/identity/api/auth/register"
       }
@@ -102,7 +102,7 @@
         "header": [{ "key": "Content-Type", "value": "application/json" }],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"email\": \"admin@demo.by\",\n  \"password\": \"demo\"\n}"
+          "raw": "{\n  \"email\": \"admin@test.local\",\n  \"password\": \"testpass1\"\n}"
         },
         "url": "{{baseUrl}}/identity/api/auth/login"
       }
@@ -146,7 +146,7 @@
         "header": [{ "key": "Content-Type", "value": "application/json" }],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"email\": \"operator@demo.by\",\n  \"password\": \"demo\"\n}"
+          "raw": "{\n  \"email\": \"operator@test.local\",\n  \"password\": \"testpass1\"\n}"
         },
         "url": "{{baseUrl}}/identity/api/auth/login"
       }

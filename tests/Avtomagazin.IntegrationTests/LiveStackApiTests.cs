@@ -23,8 +23,8 @@ public class LiveStackApiTests
 
         var login = await client.PostAsJsonAsync("/identity/api/auth/login", new
         {
-            email = "operator@demo.by",
-            password = "demo"
+            email = "operator@test.local",
+            password = "testpass1"
         });
         Assert.Equal(HttpStatusCode.OK, login.StatusCode);
         using var loginDoc = JsonDocument.Parse(await login.Content.ReadAsStringAsync());

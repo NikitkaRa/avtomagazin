@@ -43,14 +43,12 @@ using (var scope = app.Services.CreateScope())
     var db = scope.ServiceProvider.GetRequiredService<IdentityDbContext>();
     await RelationalSchema.ApplyAsync(db);
 
-    var seedDemo = builder.Configuration.GetValue("Seed:DemoUsers", builder.Environment.IsDevelopment() || builder.Environment.IsEnvironment("Testing"));
-    if (seedDemo)
+    var seedFixtures = builder.Configuration.GetValue(
+        "Seed:FixtureUsers",
+        builder.Environment.IsDevelopment() || builder.Environment.IsEnvironment("Testing"));
+    if (seedFixtures)
     {
-        await Seed.EnsureDemoUsersAsync(db);
-        if (builder.Environment.IsDevelopment())
-        {
-            await Seed.EnsureHeatResidentsAsync(db);
-        }
+        await Seed.EnsureFixtureUsersAsync(db);
     }
 
     await Seed.EnsureBootstrapAdminAsync(db, builder.Configuration);
