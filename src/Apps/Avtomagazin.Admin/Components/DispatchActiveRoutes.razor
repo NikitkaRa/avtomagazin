@@ -1,0 +1,61 @@
+<section class="block">
+    <header class="block-head">
+        <h2>Активные маршруты</h2>
+        <span class="block-meta">@Rows.Count()</span>
+    </header>
+    @if (!Rows.Any())
+    {
+        <p class="empty">Нет активных рейсов — автолавка на маршруте должна быть в парке и на связи.</p>
+    }
+    else
+    {
+        <ul class="feed">
+            @foreach (var row in Rows)
+            {
+                <li class="feed-row feed-action @(row.HasDriverNote ? "route-alert" : row.IsLate ? "route-late" : null)"
+                    @onclick="() => OpenTrip.InvokeAsync(row.VehicleId)">
+                    <div class="route-line">
+                        @if (row.HasGps)
+                        {
+                            <span class="gps-pill @(row.Live ? "gps-live" : "gps-stale")"
+                                  title="@(row.Live ? "Эфир GPS" : "Последний GPS")">GPS</span>
+                        }
+                        <div>
+                            <strong>@row.RouteName</strong>
+                            <span class="feed-sub">
+                                @row.Plate
+                                @if (!string.IsNullOrEmpty(row.DriverNote))
+                                {
+                                    <text> · @row.DriverNote</text>
+                                }
+                                else if (!string.IsNullOrEmpty(row.NextStop))
+                                {
+                                    <text> · след. @row.NextStop</text>
+                                }
+                            </span>
+                        </div>
+                    </div>
+                    <div class="feed-side">
+                        @if (row.HasDriverNote)
+                        {
+                            <span class="route-alert-badge">проблема</span>
+                        }
+                        else
+                        {
+                            <span class="@(row.IsLate ? "route-late-badge" : null)">@row.DelayLabel</span>
+                        }
+                        @if (!string.IsNullOrEmpty(row.ScheduleLabel))
+                        {
+                            <time>@row.ScheduleLabel</time>
+                        }
+                    </div>
+                </li>
+            }
+        </ul>
+    }
+</section>
+
+@code {
+    [Parameter] public IEnumerable<RouteProgress> Rows { get; set; } = [];
+    [Parameter] public EventCallback<Guid> OpenTrip { get; set; }
+}

@@ -29,6 +29,9 @@ public static class PrincipalAccess
     public static bool CanDispatch(this ClaimsPrincipal user)
         => user.Role() is Roles.Operator or Roles.Admin;
 
+    public static bool CanSeeCrewContacts(this ClaimsPrincipal user)
+        => Roles.IsStaff(user.Role() ?? "");
+
     public static bool CanWriteVehicle(this ClaimsPrincipal user, Guid vehicleId)
     {
         if (user.CanDispatch())

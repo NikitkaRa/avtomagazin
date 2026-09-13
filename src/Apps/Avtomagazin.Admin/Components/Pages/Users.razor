@@ -21,317 +21,39 @@
     <button type="button" class="chip @SegmentOn("residents")" @onclick='() => SetSegment("residents")'>Жители</button>
 </div>
 
-@if (_segment == "staff" && _pending.Count > 0)
+@if (_segment == "staff")
 {
-    <section class="block">
-        <header class="block-head">
-            <h2>Заявки</h2>
-            <span class="block-meta">@_pending.Count</span>
-        </header>
-        @foreach (var u in _pending)
-        {
-            <section class="panel">
-                <strong>@u.DisplayName</strong>
-                <div class="muted">@u.Email · @u.RoleTitle</div>
-                @if (Roles.IsVanCrew(u.Role))
-                {
-                    <label class="field" style="margin-top:0.55rem">
-                        <span>Автолавка @(u.Role == Roles.Driver ? "(обязательно)" : "(по желанию)")</span>
-                        <div class="select-wrap">
-                            <select value="@VanOf(u.Id)" @onchange="e => SetVan(u.Id, e.Value?.ToString())">
-                                <option value="">выберите</option>
-                                @foreach (var van in _vans)
-                                {
-                                    <option value="@van.Id">@van.PlateNumber · @van.OperatorName</option>
-                                }
-                            </select>
-                        </div>
-                    </label>
-                }
-                <div class="row" style="margin-top:0.6rem">
-                    <button type="button" class="btn" @onclick="() => ApproveAsync(u)">Подтвердить</button>
-                    <button type="button" class="btn btn-ghost" @onclick="() => RejectAsync(u)">Отклонить</button>
-                </div>
-            </section>
-        }
-    </section>
+    <UsersPending Pending="_pending"
+                  Vans="_vans"
+                  VanOf="VanOf"
+                  VanChanged="args => SetVan(args.Id, args.Value)"
+                  Approve="ApproveAsync"
+                  Reject="RejectAsync" />
 }
 
-<section class="block">
-    <header class="block-head">
-        <h2>@(_segment == "staff" ? "Персонал" : "Жители")</h2>
-        <span class="block-meta">@Filtered.Count()</span>
-    </header>
+<UsersDirectory Segment="@_segment"
+                Filtered="Filtered"
+                ResetId="_resetId"
+                ResetPassword="@_resetPassword"
+                ResetPasswordChanged="v => _resetPassword = v"
+                RoleOn="RoleOn"
+                StatusOn="StatusOn"
+                AssignOn="AssignOn"
+                SetRole="SetRole"
+                SetStatus="SetStatus"
+                SetAssign="SetAssign"
+                VanLabel="VanLabel"
+                Disable="DisableAsync"
+                Approve="ApproveAsync"
+                ToggleReset="ToggleReset"
+                ResetPasswordSubmit="ResetPasswordAsync" />
 
-    <div class="attn-tools users-filters">
-        @if (_segment == "staff")
-        {
-            <div class="filter-chips" role="tablist" aria-label="Роль">
-                <button type="button" class="chip @RoleOn("all")" @onclick='() => SetRole("all")'>Все роли</button>
-                <button type="button" class="chip @RoleOn(Roles.Driver)" @onclick="() => SetRole(Roles.Driver)">Водители</button>
-                <button type="button" class="chip @RoleOn(Roles.Seller)" @onclick="() => SetRole(Roles.Seller)">Продавцы</button>
-                <button type="button" class="chip @RoleOn(Roles.Operator)" @onclick="() => SetRole(Roles.Operator)">Диспетчеры</button>
-                <button type="button" class="chip @RoleOn(Roles.Admin)" @onclick="() => SetRole(Roles.Admin)">Админы</button>
-            </div>
-            <div class="filter-chips" role="tablist" aria-label="Назначение">
-                <button type="button" class="chip @AssignOn("all")" @onclick='() => SetAssign("all")'>Все</button>
-                <button type="button" class="chip @AssignOn("assigned")" @onclick='() => SetAssign("assigned")'>С автолавкой</button>
-                <button type="button" class="chip @AssignOn("free")" @onclick='() => SetAssign("free")'>Без автолавки</button>
-            </div>
-        }
-        <div class="filter-chips" role="tablist" aria-label="Статус">
-            <button type="button" class="chip @StatusOn("all")" @onclick='() => SetStatus("all")'>Любой статус</button>
-            @if (_segment == "staff")
-            {
-                <button type="button" class="chip @StatusOn(UserStatuses.Pending)" @onclick="() => SetStatus(UserStatuses.Pending)">Ждут</button>
-            }
-            <button type="button" class="chip @StatusOn(UserStatuses.Active)" @onclick="() => SetStatus(UserStatuses.Active)">Активны</button>
-            <button type="button" class="chip @StatusOn(UserStatuses.Disabled)" @onclick="() => SetStatus(UserStatuses.Disabled)">Отключены</button>
-        </div>
+@if (_segment == "residents" && _residentTotal > ResidentPageSize)
+{
+    <div class="row" style="margin-top:0.75rem">
+        <button type="button" class="btn btn-ghost" disabled="@(_residentSkip == 0)" @onclick="PrevResidentsAsync">Назад</button>
+        <span class="muted tiny">@_residentSkip–@Math.Min(_residentSkip + ResidentPageSize, _residentTotal) из @_residentTotal</span>
+        <button type="button" class="btn btn-ghost" disabled="@(_residentSkip + ResidentPageSize >= _residentTotal)" @onclick="NextResidentsAsync">Ещё</button>
     </div>
-
-    @if (!Filtered.Any())
-    {
-        <p class="empty">Никого по этим фильтрам.</p>
-    }
-    else
-    {
-        <table class="table">
-            <thead>
-            <tr>
-                <th>Имя</th>
-                <th>Роль</th>
-                <th>Статус</th>
-                @if (_segment == "staff")
-                {
-                    <th>Автолавка</th>
-                }
-                <th></th>
-            </tr>
-            </thead>
-            <tbody>
-            @foreach (var u in Filtered)
-            {
-                <tr>
-                    <td>@u.DisplayName<br /><span class="muted tiny">@u.Email</span></td>
-                    <td>@u.RoleTitle</td>
-                    <td>@UserStatuses.Title(u.Status)</td>
-                    @if (_segment == "staff")
-                    {
-                        <td class="muted tiny">@VanLabel(u)</td>
-                    }
-                    <td>
-                        @if (u.Role != Roles.Admin && u.Status == UserStatuses.Active)
-                        {
-                            <button type="button" class="link" @onclick="() => DisableAsync(u)">Отключить</button>
-                        }
-                        else if (u.Role != Roles.Admin && u.Status == UserStatuses.Disabled)
-                        {
-                            <button type="button" class="link" @onclick="() => ApproveAsync(u)">Включить</button>
-                        }
-                        @if (u.Role != Roles.Admin)
-                        {
-                            <button type="button" class="link" @onclick="() => ToggleReset(u.Id)">Пароль</button>
-                        }
-                        @if (_resetId == u.Id)
-                        {
-                            <div class="stack" style="margin-top:0.45rem">
-                                <input type="password" @bind="_resetPassword" placeholder="новый, от 8 символов" autocomplete="new-password" />
-                                <button type="button" class="btn" @onclick="ResetPasswordAsync">Сбросить</button>
-                            </div>
-                        }
-                    </td>
-                </tr>
-            }
-            </tbody>
-        </table>
-    }
-</section>
-</StaffPageGate>
-
-@code {
-    private string? _error;
-    private List<AccountDto> _pending = [];
-    private List<AccountDto> _all = [];
-    private List<VehicleDto> _vans = [];
-    private Dictionary<Guid, string> _vanByUser = [];
-    private Guid? _resetId;
-    private string _resetPassword = "";
-    private string _segment = "staff";
-    private string _roleFilter = "all";
-    private string _statusFilter = "all";
-    private string _assignFilter = "all";
-
-    private IEnumerable<AccountDto> Filtered
-    {
-        get
-        {
-            IEnumerable<AccountDto> items = _segment == "residents"
-                ? _all.Where(u => u.Role == Roles.Resident)
-                : _all.Where(u => u.Role != Roles.Resident);
-
-            if (_segment == "staff" && _roleFilter is not "all")
-            {
-                items = items.Where(u => u.Role == _roleFilter);
-            }
-
-            if (_statusFilter is not "all")
-            {
-                items = items.Where(u => u.Status == _statusFilter);
-            }
-
-            if (_segment == "staff" && _assignFilter is not "all")
-            {
-                items = _assignFilter switch
-                {
-                    "assigned" => items.Where(u => u.VehicleId is not null),
-                    "free" => items.Where(u => u.VehicleId is null && Roles.IsVanCrew(u.Role)),
-                    _ => items
-                };
-            }
-
-            return items
-                .OrderBy(u => u.Role switch
-                {
-                    Roles.Admin => 0,
-                    Roles.Operator => 1,
-                    Roles.Driver => 2,
-                    Roles.Seller => 3,
-                    Roles.Resident => 4,
-                    _ => 9
-                })
-                .ThenBy(u => u.DisplayName, StringComparer.OrdinalIgnoreCase);
-        }
-    }
-
-    private string SegmentOn(string s) => _segment == s ? "chip-on" : null!;
-    private string RoleOn(string role) => _roleFilter == role ? "chip-on" : null!;
-    private string StatusOn(string status) => _statusFilter == status ? "chip-on" : null!;
-    private string AssignOn(string a) => _assignFilter == a ? "chip-on" : null!;
-
-    private void SetSegment(string segment)
-    {
-        _segment = segment;
-        _roleFilter = "all";
-        _assignFilter = "all";
-        if (segment == "residents" && _statusFilter == UserStatuses.Pending)
-        {
-            _statusFilter = "all";
-        }
-    }
-
-    private void SetRole(string role) => _roleFilter = role;
-    private void SetStatus(string status) => _statusFilter = status;
-    private void SetAssign(string assign) => _assignFilter = assign;
-
-    private async Task ReloadAsync()
-    {
-        try
-        {
-            _all = await Api.GetUsersAsync();
-            _pending = _all.Where(u => u.Status == UserStatuses.Pending && u.Role != Roles.Resident).ToList();
-            _vans = await Api.GetVehiclesAsync();
-            foreach (var u in _pending.Where(x =>
-                         Roles.IsVanCrew(x.Role) && !_vanByUser.ContainsKey(x.Id)))
-            {
-                _vanByUser[u.Id] = u.VehicleId?.ToString() ?? "";
-            }
-
-            _error = null;
-        }
-        catch (Exception ex)
-        {
-            _error = ex.Message;
-        }
-    }
-
-    private async Task ApproveAsync(AccountDto user)
-    {
-        try
-        {
-            Guid? van = user.VehicleId;
-            if (Roles.IsVanCrew(user.Role)
-                && _vanByUser.TryGetValue(user.Id, out var raw)
-                && Guid.TryParse(raw, out var picked))
-            {
-                van = picked;
-            }
-
-            await Api.ApproveUserAsync(user.Id, user.Role, van);
-            await ReloadAsync();
-        }
-        catch (Exception ex)
-        {
-            _error = ex.Message;
-        }
-    }
-
-    private async Task RejectAsync(AccountDto user)
-    {
-        try
-        {
-            await Api.RejectUserAsync(user.Id);
-            await ReloadAsync();
-        }
-        catch (Exception ex)
-        {
-            _error = ex.Message;
-        }
-    }
-
-    private async Task DisableAsync(AccountDto user)
-    {
-        try
-        {
-            await Api.DisableUserAsync(user.Id);
-            await ReloadAsync();
-        }
-        catch (Exception ex)
-        {
-            _error = ex.Message;
-        }
-    }
-
-    private void ToggleReset(Guid id)
-    {
-        _resetId = _resetId == id ? null : id;
-        _resetPassword = "";
-    }
-
-    private async Task ResetPasswordAsync()
-    {
-        if (_resetId is not Guid id)
-        {
-            return;
-        }
-
-        try
-        {
-            await Api.ResetUserPasswordAsync(id, _resetPassword);
-            _resetId = null;
-            _resetPassword = "";
-            _error = null;
-        }
-        catch (Exception ex)
-        {
-            _error = ex.Message;
-        }
-    }
-
-    private string VanOf(Guid id)
-        => _vanByUser.GetValueOrDefault(id) ?? "";
-
-    private void SetVan(Guid id, string? value)
-        => _vanByUser[id] = value ?? "";
-
-    private string VanLabel(AccountDto u)
-    {
-        if (u.VehicleId is not Guid id)
-        {
-            return Roles.IsVanCrew(u.Role) ? "—" : "";
-        }
-
-        var van = _vans.FirstOrDefault(v => v.Id == id);
-        return van is null ? "назначена" : van.PlateNumber;
-    }
 }
+</StaffPageGate>

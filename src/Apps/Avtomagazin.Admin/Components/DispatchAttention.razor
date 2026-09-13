@@ -1,0 +1,78 @@
+<section class="block">
+    <header class="block-head">
+        <h2>Внимание</h2>
+        <span class="block-meta">@(Notes.Count() + Cases.Count())</span>
+    </header>
+    <div class="attn-tools">
+        <div class="filter-chips" role="tablist" aria-label="Статус">
+            <button type="button" class="chip @(StatusFilter == "active" ? "chip-on" : null)" @onclick='() => StatusFilterChanged.InvokeAsync("active")'>Активные</button>
+            <button type="button" class="chip @(StatusFilter == CaseStatuses.Open ? "chip-on" : null)" @onclick="() => StatusFilterChanged.InvokeAsync(CaseStatuses.Open)">Открыты</button>
+            <button type="button" class="chip @(StatusFilter == CaseStatuses.InProgress ? "chip-on" : null)" @onclick="() => StatusFilterChanged.InvokeAsync(CaseStatuses.InProgress)">В процессе</button>
+            <button type="button" class="chip @(StatusFilter == CaseStatuses.Closed ? "chip-on" : null)" @onclick="() => StatusFilterChanged.InvokeAsync(CaseStatuses.Closed)">Закрыты</button>
+            <button type="button" class="chip @(StatusFilter == "all" ? "chip-on" : null)" @onclick='() => StatusFilterChanged.InvokeAsync("all")'>Все</button>
+        </div>
+        <input class="attn-search" value="@SettlementQuery" @oninput="OnSearchInput" placeholder="Поиск по населённому пункту" />
+    </div>
+    @if (!Notes.Any() && !Cases.Any())
+    {
+        <p class="empty">@(string.IsNullOrWhiteSpace(SettlementQuery) ? "Пока спокойно — жалоб и сообщений водителей нет." : "Ничего не найдено.")</p>
+    }
+    else
+    {
+        <ul class="feed">
+            @foreach (var note in Notes)
+            {
+                var van = VanOf(note.VehicleId);
+                var route = RouteOf(note.VehicleId);
+                <li class="feed-row route-alert feed-action" @onclick="() => OpenTrip.InvokeAsync(note.VehicleId)">
+                    <div>
+                        <strong>@(route?.Name ?? van?.PlateNumber ?? "Автолавка")</strong>
+                        <span class="feed-sub">
+                            @(van?.PlateNumber ?? "автолавка") · водитель · @note.Body
+                        </span>
+                    </div>
+                    <div class="feed-side">
+                        <span class="route-alert-badge">водитель</span>
+                        <time>@DispatchBoard.Ago(note.CreatedAtUtc)</time>
+                    </div>
+                </li>
+            }
+            @foreach (var item in Cases)
+            {
+                var van = VanOf(item.VehicleId);
+                <li class="feed-row @(item.Status == CaseStatuses.Closed ? null : "warn") feed-action" @onclick="() => OpenCase.InvokeAsync(item)">
+                    <div>
+                        <strong>@item.SettlementName</strong>
+                        <span class="feed-sub">
+                            @DispatchBoard.People(item.ReportCount) · @DispatchBoard.StatusLabel(item.Status)
+                            @if (van is not null)
+                            {
+                                <text> · @van.PlateNumber</text>
+                            }
+                        </span>
+                    </div>
+                    <div class="feed-side">
+                        <span class="eta-min">@item.ReportCount</span>
+                        <time>@DispatchBoard.Ago(item.UpdatedAtUtc)</time>
+                    </div>
+                </li>
+            }
+        </ul>
+    }
+</section>
+
+@code {
+    [Parameter] public IEnumerable<DriverNoteDto> Notes { get; set; } = [];
+    [Parameter] public IEnumerable<CaseSummaryDto> Cases { get; set; } = [];
+    [Parameter] public string StatusFilter { get; set; } = "active";
+    [Parameter] public string SettlementQuery { get; set; } = "";
+    [Parameter] public EventCallback<string> StatusFilterChanged { get; set; }
+    [Parameter] public EventCallback<string> SettlementQueryChanged { get; set; }
+    [Parameter] public EventCallback<Guid> OpenTrip { get; set; }
+    [Parameter] public EventCallback<CaseSummaryDto> OpenCase { get; set; }
+    [Parameter] public Func<Guid?, VehicleDto?> VanOf { get; set; } = _ => null;
+    [Parameter] public Func<Guid, RouteDto?> RouteOf { get; set; } = _ => null;
+
+    private Task OnSearchInput(ChangeEventArgs e)
+        => SettlementQueryChanged.InvokeAsync(e.Value?.ToString() ?? string.Empty);
+}

@@ -112,8 +112,7 @@ public static class ObservabilityExtensions
                 {
                     status = e.Value.Status.ToString(),
                     durationMs = e.Value.Duration.TotalMilliseconds,
-                    description = e.Value.Description,
-                    error = e.Value.Exception?.Message
+                    description = e.Value.Description
                 })
         };
         await context.Response.WriteAsync(JsonSerializer.Serialize(payload));

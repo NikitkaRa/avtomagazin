@@ -28,6 +28,8 @@ public class IdentityApiTests : IClassFixture<IdentityApiFactory>
         using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         Assert.False(string.IsNullOrWhiteSpace(doc.RootElement.GetProperty("accessToken").GetString()));
         Assert.Equal("resident", doc.RootElement.GetProperty("role").GetString());
+        var expires = doc.RootElement.GetProperty("accessTokenExpiresAtUtc").GetDateTimeOffset();
+        Assert.InRange(expires, DateTimeOffset.UtcNow.AddMinutes(30), DateTimeOffset.UtcNow.AddHours(3));
     }
 
     [Fact]
@@ -157,6 +159,35 @@ public class IdentityApiTests : IClassFixture<IdentityApiFactory>
         using var admin = await AuthedAsync("admin@demo.by");
         var ok = await admin.GetAsync("/api/users");
         Assert.Equal(HttpStatusCode.OK, ok.StatusCode);
+        using var page = JsonDocument.Parse(await ok.Content.ReadAsStringAsync());
+        Assert.True(page.RootElement.TryGetProperty("items", out var items));
+        Assert.True(page.RootElement.GetProperty("total").GetInt32() >= items.GetArrayLength());
+        Assert.True(page.RootElement.GetProperty("take").GetInt32() <= 200);
+    }
+
+    [Fact]
+    public async Task Users_list_staff_kind_excludes_residents()
+    {
+        using var admin = await AuthedAsync("admin@demo.by");
+        var response = await admin.GetAsync("/api/users?kind=staff&take=200");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        foreach (var u in UserRows(doc.RootElement))
+        {
+            Assert.NotEqual("resident", u.GetProperty("role").GetString());
+        }
+    }
+
+    [Fact]
+    public async Task Refresh_returns_new_access_token()
+    {
+        using var client = await AuthedAsync("resident@demo.by");
+        var refresh = await client.PostAsJsonAsync("/api/auth/refresh", new { });
+        Assert.Equal(HttpStatusCode.OK, refresh.StatusCode);
+        using var doc = JsonDocument.Parse(await refresh.Content.ReadAsStringAsync());
+        Assert.False(string.IsNullOrWhiteSpace(doc.RootElement.GetProperty("accessToken").GetString()));
+        var expires = doc.RootElement.GetProperty("accessTokenExpiresAtUtc").GetDateTimeOffset();
+        Assert.True(expires > DateTimeOffset.UtcNow.AddMinutes(30));
     }
 
     [Fact]
@@ -399,7 +430,7 @@ public class IdentityApiTests : IClassFixture<IdentityApiFactory>
 
         var users = await admin.GetFromJsonAsync<JsonElement>("/api/users");
         Guid? adminId = null;
-        foreach (var u in users.EnumerateArray())
+        foreach (var u in UserRows(users))
         {
             if (u.GetProperty("email").GetString() == "admin@demo.by")
             {
@@ -428,7 +459,7 @@ public class IdentityApiTests : IClassFixture<IdentityApiFactory>
 
         var users = await admin.GetFromJsonAsync<JsonElement>("/api/users");
         Guid? firstVan = null;
-        foreach (var u in users.EnumerateArray())
+        foreach (var u in UserRows(users))
         {
             if (u.GetProperty("id").GetGuid() == first)
             {
@@ -465,7 +496,7 @@ public class IdentityApiTests : IClassFixture<IdentityApiFactory>
 
         var users = await admin.GetFromJsonAsync<JsonElement>("/api/users");
         Guid? assigned = Guid.Empty;
-        foreach (var u in users.EnumerateArray())
+        foreach (var u in UserRows(users))
         {
             if (u.GetProperty("id").GetGuid() == driverId)
             {
@@ -505,7 +536,7 @@ public class IdentityApiTests : IClassFixture<IdentityApiFactory>
 
         var users = await admin.GetFromJsonAsync<JsonElement>("/api/users");
         Guid? firstVan = Guid.Empty;
-        foreach (var u in users.EnumerateArray())
+        foreach (var u in UserRows(users))
         {
             if (u.GetProperty("id").GetGuid() == first)
             {
@@ -524,7 +555,7 @@ public class IdentityApiTests : IClassFixture<IdentityApiFactory>
         using var admin = await AuthedAsync("admin@demo.by");
         var users = await admin.GetFromJsonAsync<JsonElement>("/api/users");
         Guid? operatorId = null;
-        foreach (var u in users.EnumerateArray())
+        foreach (var u in UserRows(users))
         {
             if (u.GetProperty("email").GetString() == "operator@demo.by")
             {
@@ -576,4 +607,7 @@ public class IdentityApiTests : IClassFixture<IdentityApiFactory>
         Assert.Equal(HttpStatusCode.OK, approve.StatusCode);
         return id;
     }
+
+    private static IEnumerable<JsonElement> UserRows(JsonElement root)
+        => root.GetProperty("items").EnumerateArray();
 }

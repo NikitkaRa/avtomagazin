@@ -4,6 +4,8 @@ using System.Text;
 using Avtomagazin.Contracts;
 using Avtomagazin.Identity.Api.Data;
 using Avtomagazin.ServiceDefaults;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Hosting;
 using Microsoft.IdentityModel.Tokens;
 
 namespace Avtomagazin.Identity.Api;
@@ -33,13 +35,21 @@ internal static class AuthTokens
             claims.Add(new Claim(AuthClaims.VehicleId, vehicleId.ToString()));
         }
 
+        var hours = config.GetValue("Jwt:AccessTokenHours", 2d);
+        if (hours is < 0.25 or > 12)
+        {
+            hours = 2;
+        }
+
+        var lifetime = TimeSpan.FromHours(hours);
+        var expiresAt = DateTimeOffset.UtcNow.Add(lifetime);
         var token = new JwtSecurityToken(
             issuer: config["Jwt:Issuer"] ?? "avtomagazin",
             audience: config["Jwt:Audience"] ?? "avtomagazin",
             claims: claims,
-            expires: DateTime.UtcNow.AddHours(12),
+            expires: expiresAt.UtcDateTime,
             signingCredentials: credentials);
 
-        return IdentityMaps.ToLogin(user, new JwtSecurityTokenHandler().WriteToken(token));
+        return IdentityMaps.ToLogin(user, new JwtSecurityTokenHandler().WriteToken(token), expiresAt);
     }
 }

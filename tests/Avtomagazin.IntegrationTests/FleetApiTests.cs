@@ -17,6 +17,32 @@ public class FleetApiTests : IClassFixture<FleetApiFactory>
     }
 
     [Fact]
+    public async Task Resident_list_hides_crew_phones()
+    {
+        using var client = TestJwt.Client(_factory, Roles.Resident);
+        var response = await client.GetAsync("/api/vehicles");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        foreach (var item in doc.RootElement.EnumerateArray())
+        {
+            Assert.True(item.TryGetProperty("driverPhone", out var phone));
+            Assert.Equal(JsonValueKind.Null, phone.ValueKind);
+            Assert.Equal(JsonValueKind.Null, item.GetProperty("sellerPhone").ValueKind);
+            Assert.Equal(JsonValueKind.Null, item.GetProperty("operatorPhone").ValueKind);
+            Assert.Equal(JsonValueKind.Null, item.GetProperty("driverUserId").ValueKind);
+        }
+    }
+
+    [Fact]
+    public async Task Operator_list_includes_crew_phones()
+    {
+        using var client = TestJwt.Client(_factory, Roles.Operator);
+        var vehicle = await client.GetFromJsonAsync<JsonElement>($"/api/vehicles/{TestJwt.GrodnoVan}");
+        Assert.Equal(JsonValueKind.String, vehicle.GetProperty("driverPhone").ValueKind);
+        Assert.False(string.IsNullOrWhiteSpace(vehicle.GetProperty("driverPhone").GetString()));
+    }
+
+    [Fact]
     public async Task Anonymous_cannot_list_vehicles()
     {
         var response = await _anonymous.GetAsync("/api/vehicles");

@@ -1,0 +1,94 @@
+@using Microsoft.AspNetCore.Components.Forms
+
+<section class="block">
+    <header class="block-head">
+        <h2>Остановки и расписание</h2>
+        <span class="block-meta">@Stops.Count</span>
+    </header>
+    @if (Stops.Count == 0)
+    {
+        <p class="empty">Пока пусто — кликните по карте.</p>
+    }
+    else
+    {
+        <ol class="stop-list">
+            @for (var i = 0; i < Stops.Count; i++)
+            {
+                var idx = i;
+                var stop = Stops[i];
+                <li class="stop-card">
+                    <span class="route-seq" aria-hidden="true">@(idx + 1)</span>
+
+                    <div class="stop-card-main">
+                        <div class="stop-card-head">
+                            <input class="stop-name"
+                                   value="@stop.Name"
+                                   @onchange="e => Rename.InvokeAsync((idx, e.Value?.ToString()))"
+                                   placeholder="Название пункта"
+                                   aria-label="Остановка @(idx + 1)" />
+                            <div class="stop-toolbar" role="group" aria-label="Действия">
+                                <button type="button"
+                                        class="stop-tool"
+                                        title="Выше"
+                                        disabled="@(idx == 0)"
+                                        @onclick="() => MoveUp.InvokeAsync(idx)">↑</button>
+                                <button type="button"
+                                        class="stop-tool"
+                                        title="Ниже"
+                                        disabled="@(idx == Stops.Count - 1)"
+                                        @onclick="() => MoveDown.InvokeAsync(idx)">↓</button>
+                                <button type="button"
+                                        class="stop-tool stop-tool-danger"
+                                        title="Удалить"
+                                        @onclick="() => Remove.InvokeAsync(idx)">×</button>
+                            </div>
+                        </div>
+
+                        <div class="stop-fields">
+                            <label class="field stop-plan">
+                                <span>План прибытия</span>
+                                <input type="datetime-local"
+                                       value="@LocalPlanValue(stop)"
+                                       @onchange="e => PlanChanged.InvokeAsync((idx, e.Value?.ToString()))" />
+                            </label>
+                            <div class="field stop-coords" aria-label="Координаты">
+                                <span>Координаты</span>
+                                <span class="stop-coords-value">@stop.Lat.ToString("F4"), @stop.Lng.ToString("F4")</span>
+                            </div>
+                            <div class="stop-photo">
+                                @if (!string.IsNullOrEmpty(stop.PhotoDataUrl))
+                                {
+                                    <img class="stop-thumb" src="@stop.PhotoDataUrl" alt="" />
+                                    <button type="button" class="stop-photo-clear" @onclick="() => ClearPhoto.InvokeAsync(idx)">Убрать</button>
+                                }
+                                <label class="stop-photo-add">
+                                    @(string.IsNullOrEmpty(stop.PhotoDataUrl) ? "Фото" : "Заменить")
+                                    <InputFile class="visually-hidden"
+                                               OnChange="e => PhotoSelected.InvokeAsync((idx, e))"
+                                               accept="image/jpeg,image/png,image/webp" />
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </li>
+            }
+        </ol>
+    }
+</section>
+
+@code {
+    [Parameter] public List<RouteDraftStop> Stops { get; set; } = [];
+    [Parameter] public EventCallback<(int Index, string? Name)> Rename { get; set; }
+    [Parameter] public EventCallback<int> MoveUp { get; set; }
+    [Parameter] public EventCallback<int> MoveDown { get; set; }
+    [Parameter] public EventCallback<int> Remove { get; set; }
+    [Parameter] public EventCallback<(int Index, string? Value)> PlanChanged { get; set; }
+    [Parameter] public EventCallback<int> ClearPhoto { get; set; }
+    [Parameter] public EventCallback<(int Index, InputFileChangeEventArgs Args)> PhotoSelected { get; set; }
+
+    private static string LocalPlanValue(RouteDraftStop stop)
+    {
+        var utc = stop.PlannedArrivalUtc ?? DateTimeOffset.UtcNow;
+        return BelarusTime.InputLocal(utc);
+    }
+}

@@ -46,6 +46,51 @@ public class NotificationsApiTests : IClassFixture<NotificationsApiFactory>
     }
 
     [Fact]
+    public async Task Device_token_cannot_be_stolen_and_short_tokens_rejected()
+    {
+        var owner = Guid.NewGuid();
+        var other = Guid.NewGuid();
+        var token = $"dev-{Guid.NewGuid():N}";
+        using var a = TestJwt.Client(_factory, Roles.Resident, userId: owner);
+        using var b = TestJwt.Client(_factory, Roles.Resident, userId: other);
+
+        var shortToken = await a.PostAsJsonAsync("/api/devices/register", new
+        {
+            deviceToken = "short",
+            platform = "android",
+            settlementName = "Озеричино"
+        });
+        Assert.Equal(HttpStatusCode.BadRequest, shortToken.StatusCode);
+
+        var ok = await a.PostAsJsonAsync("/api/devices/register", new
+        {
+            deviceToken = token,
+            platform = "android",
+            settlementName = "Озеричино"
+        });
+        Assert.Equal(HttpStatusCode.OK, ok.StatusCode);
+
+        var stolen = await b.PostAsJsonAsync("/api/devices/register", new
+        {
+            deviceToken = token,
+            platform = "android",
+            settlementName = "Озеричино"
+        });
+        Assert.Equal(HttpStatusCode.Conflict, stolen.StatusCode);
+
+        var gone = await a.DeleteAsync($"/api/devices?deviceToken={Uri.EscapeDataString(token)}");
+        Assert.Equal(HttpStatusCode.NoContent, gone.StatusCode);
+
+        var reused = await b.PostAsJsonAsync("/api/devices/register", new
+        {
+            deviceToken = token,
+            platform = "android",
+            settlementName = "Озеричино"
+        });
+        Assert.Equal(HttpStatusCode.OK, reused.StatusCode);
+    }
+
+    [Fact]
     public async Task Device_register_binds_jwt_user_not_body()
     {
         var jwtUser = Guid.NewGuid();

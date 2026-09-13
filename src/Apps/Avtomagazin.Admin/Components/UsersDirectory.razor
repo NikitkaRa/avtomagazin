@@ -1,0 +1,109 @@
+<section class="block">
+    <header class="block-head">
+        <h2>@(Segment == "staff" ? "Персонал" : "Жители")</h2>
+        <span class="block-meta">@Filtered.Count()</span>
+    </header>
+
+    <div class="attn-tools users-filters">
+        @if (Segment == "staff")
+        {
+            <div class="filter-chips" role="tablist" aria-label="Роль">
+                <button type="button" class="chip @RoleOn("all")" @onclick='() => SetRole.InvokeAsync("all")'>Все роли</button>
+                <button type="button" class="chip @RoleOn(Roles.Driver)" @onclick="() => SetRole.InvokeAsync(Roles.Driver)">Водители</button>
+                <button type="button" class="chip @RoleOn(Roles.Seller)" @onclick="() => SetRole.InvokeAsync(Roles.Seller)">Продавцы</button>
+                <button type="button" class="chip @RoleOn(Roles.Operator)" @onclick="() => SetRole.InvokeAsync(Roles.Operator)">Диспетчеры</button>
+                <button type="button" class="chip @RoleOn(Roles.Admin)" @onclick="() => SetRole.InvokeAsync(Roles.Admin)">Админы</button>
+            </div>
+            <div class="filter-chips" role="tablist" aria-label="Назначение">
+                <button type="button" class="chip @AssignOn("all")" @onclick='() => SetAssign.InvokeAsync("all")'>Все</button>
+                <button type="button" class="chip @AssignOn("assigned")" @onclick='() => SetAssign.InvokeAsync("assigned")'>С автолавкой</button>
+                <button type="button" class="chip @AssignOn("free")" @onclick='() => SetAssign.InvokeAsync("free")'>Без автолавки</button>
+            </div>
+        }
+        <div class="filter-chips" role="tablist" aria-label="Статус">
+            <button type="button" class="chip @StatusOn("all")" @onclick='() => SetStatus.InvokeAsync("all")'>Любой статус</button>
+            @if (Segment == "staff")
+            {
+                <button type="button" class="chip @StatusOn(UserStatuses.Pending)" @onclick="() => SetStatus.InvokeAsync(UserStatuses.Pending)">Ждут</button>
+            }
+            <button type="button" class="chip @StatusOn(UserStatuses.Active)" @onclick="() => SetStatus.InvokeAsync(UserStatuses.Active)">Активны</button>
+            <button type="button" class="chip @StatusOn(UserStatuses.Disabled)" @onclick="() => SetStatus.InvokeAsync(UserStatuses.Disabled)">Отключены</button>
+        </div>
+    </div>
+
+    @if (!Filtered.Any())
+    {
+        <p class="empty">Никого по этим фильтрам.</p>
+    }
+    else
+    {
+        <table class="table">
+            <thead>
+            <tr>
+                <th>Имя</th>
+                <th>Роль</th>
+                <th>Статус</th>
+                @if (Segment == "staff")
+                {
+                    <th>Автолавка</th>
+                }
+                <th></th>
+            </tr>
+            </thead>
+            <tbody>
+            @foreach (var u in Filtered)
+            {
+                <tr>
+                    <td>@u.DisplayName<br /><span class="muted tiny">@u.Email</span></td>
+                    <td>@u.RoleTitle</td>
+                    <td>@UserStatuses.Title(u.Status)</td>
+                    @if (Segment == "staff")
+                    {
+                        <td class="muted tiny">@VanLabel(u)</td>
+                    }
+                    <td>
+                        @if (u.Role != Roles.Admin && u.Status == UserStatuses.Active)
+                        {
+                            <button type="button" class="link" @onclick="() => Disable.InvokeAsync(u)">Отключить</button>
+                        }
+                        else if (u.Role != Roles.Admin && u.Status == UserStatuses.Disabled)
+                        {
+                            <button type="button" class="link" @onclick="() => Approve.InvokeAsync(u)">Включить</button>
+                        }
+                        @if (u.Role != Roles.Admin)
+                        {
+                            <button type="button" class="link" @onclick="() => ToggleReset.InvokeAsync(u.Id)">Пароль</button>
+                        }
+                        @if (ResetId == u.Id)
+                        {
+                            <div class="stack" style="margin-top:0.45rem">
+                                <input type="password" value="@ResetPassword" @oninput="e => ResetPasswordChanged.InvokeAsync(e.Value?.ToString() ?? string.Empty)" placeholder="новый, от 8 символов" autocomplete="new-password" />
+                                <button type="button" class="btn" @onclick="ResetPasswordSubmit">Сбросить</button>
+                            </div>
+                        }
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    }
+</section>
+
+@code {
+    [Parameter] public string Segment { get; set; } = "staff";
+    [Parameter] public IEnumerable<AccountDto> Filtered { get; set; } = [];
+    [Parameter] public Guid? ResetId { get; set; }
+    [Parameter] public string ResetPassword { get; set; } = "";
+    [Parameter] public EventCallback<string> ResetPasswordChanged { get; set; }
+    [Parameter] public Func<string, string> RoleOn { get; set; } = _ => "";
+    [Parameter] public Func<string, string> StatusOn { get; set; } = _ => "";
+    [Parameter] public Func<string, string> AssignOn { get; set; } = _ => "";
+    [Parameter] public EventCallback<string> SetRole { get; set; }
+    [Parameter] public EventCallback<string> SetStatus { get; set; }
+    [Parameter] public EventCallback<string> SetAssign { get; set; }
+    [Parameter] public Func<AccountDto, string> VanLabel { get; set; } = _ => "";
+    [Parameter] public EventCallback<AccountDto> Disable { get; set; }
+    [Parameter] public EventCallback<AccountDto> Approve { get; set; }
+    [Parameter] public EventCallback<Guid> ToggleReset { get; set; }
+    [Parameter] public EventCallback ResetPasswordSubmit { get; set; }
+}

@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Avtomagazin.Contracts;
 using Avtomagazin.Contracts.Events;
 using Avtomagazin.Routing.Api.Data;
@@ -199,13 +200,23 @@ public static class RouteEndpoints
                     return Results.NotFound();
                 }
 
+                var name = (request.SettlementName ?? "").Trim();
+                if (name.Length == 0)
+                {
+                    return Results.BadRequest(new { error = "Укажите название остановки" });
+                }
+
+                var region = string.IsNullOrWhiteSpace(request.RegionCode)
+                    ? "BY-MI"
+                    : request.RegionCode.Trim();
+
                 var stop = new RouteStop
                 {
                     Id = Guid.NewGuid(),
                     RouteId = routeId,
                     Sequence = request.Sequence,
-                    SettlementName = request.SettlementName.Trim(),
-                    RegionCode = request.RegionCode.Trim(),
+                    SettlementName = name,
+                    RegionCode = region,
                     Latitude = request.Latitude,
                     Longitude = request.Longitude,
                     PlannedArrivalUtc = request.PlannedArrivalUtc.ToUniversalTime()
@@ -213,7 +224,7 @@ public static class RouteEndpoints
 
                 db.Stops.Add(stop);
                 await db.SaveChangesAsync();
-                return Results.Created($"/api/stops/{stop.SettlementName}", stop.ToDto());
+                return Results.Created($"/api/stops/{stop.Id}", stop.ToDto());
             })
             .RequireAuthorization(policy => policy.RequireRole(Roles.Operator, Roles.Admin))
             .WithName("AddStop");
@@ -264,8 +275,15 @@ public static class RouteEndpoints
         group.MapPost("/stops/{stopId:guid}/reports", async (
                 Guid stopId,
                 PresenceReportRequest request,
+                ClaimsPrincipal principal,
                 RoutingDbContext db) =>
             {
+                var userId = principal.UserId();
+                if (userId is null)
+                {
+                    return Results.Unauthorized();
+                }
+
                 var kind = (request.Kind ?? "").Trim().ToLowerInvariant();
                 if (!PresenceKinds.IsKnown(kind))
                 {
@@ -292,13 +310,25 @@ public static class RouteEndpoints
                         statusCode: StatusCodes.Status403Forbidden);
                 }
 
+                var (opens, closes) = ScheduleWindow.Bounds(stop.PlannedArrivalUtc, now);
+                var reporter = userId.Value.ToString("N");
+                var already = await db.PresenceReports.AnyAsync(r =>
+                    r.StopId == stopId
+                    && r.DeviceToken == reporter
+                    && r.ReportedAtUtc >= opens
+                    && r.ReportedAtUtc <= closes);
+                if (already)
+                {
+                    return Results.Conflict(new { error = "Вы уже отметились на этой остановке" });
+                }
+
                 var report = new StopPresenceReport
                 {
                     Id = Guid.NewGuid(),
                     StopId = stop.Id,
                     SettlementName = stop.SettlementName,
                     Kind = kind,
-                    DeviceToken = string.IsNullOrWhiteSpace(request.DeviceToken) ? "anonymous" : request.DeviceToken.Trim(),
+                    DeviceToken = reporter,
                     ReportedAtUtc = now
                 };
                 db.PresenceReports.Add(report);

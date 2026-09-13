@@ -44,7 +44,7 @@
                     <span class="sidenav-role">@RoleLabel</span>
                     <NavLink href="profile" class="sidenav-name" title="Профиль">@Session.Name</NavLink>
                 </div>
-                <button type="button" class="sidenav-exit" @onclick="Session.SignOut">Выйти</button>
+                <button type="button" class="sidenav-exit" @onclick="ExitAsync">Выйти</button>
             </div>
         </aside>
 
@@ -61,7 +61,7 @@
                         </div>
                     </div>
                 </div>
-                <button type="button" class="topbar-exit" @onclick="Session.SignOut">Выйти</button>
+                <button type="button" class="topbar-exit" @onclick="ExitAsync">Выйти</button>
             </header>
 
             <main class="main">
@@ -138,6 +138,8 @@
         _wasAuthenticated = authed;
         _ = InvokeAsync(StateHasChanged);
     }
+
+    private Task ExitAsync() => Session.SignOutAsync();
 
     public void Dispose() => Session.Changed -= OnChanged;
 }

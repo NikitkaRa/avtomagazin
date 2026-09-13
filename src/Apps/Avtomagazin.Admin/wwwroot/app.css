@@ -153,6 +153,25 @@ html, body {
     gap: 0.45rem;
     justify-content: flex-end;
 }
+.page-head-sticky {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    background: var(--bg);
+    margin: 0 -1.25rem;
+    padding-left: 1.25rem;
+    padding-right: 1.25rem;
+}
+@media (max-width: 959px) {
+    .page-head-sticky { top: 3.55rem; }
+}
+@media (min-width: 960px) {
+    .page-head-sticky {
+        margin: 0 -1.75rem;
+        padding-left: 1.75rem;
+        padding-right: 1.75rem;
+    }
+}
 .btn-danger-text {
     color: var(--warn) !important;
     border-color: rgba(154, 75, 46, 0.35) !important;

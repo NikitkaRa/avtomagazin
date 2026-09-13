@@ -39,9 +39,11 @@ public partial class ResidentMapPage : ContentPage
     private async Task ReloadAsync()
     {
         await _snapshot.RefreshAsync(_api.Client);
-        Banner.Text = _snapshot.Online
-            ? DriverNoteBanner()
-            : "Нет сети. Показано последнее расписание.";
+        Banner.Text = _snapshot.SessionExpired
+            ? _snapshot.LastError
+            : _snapshot.Online
+                ? DriverNoteBanner()
+                : "Нет сети. Показано последнее расписание.";
         Banner.IsVisible = !string.IsNullOrWhiteSpace(Banner.Text);
         Banner.TextColor = _snapshot.Online
             ? Color.FromArgb("#F0C7B0")

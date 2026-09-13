@@ -22,17 +22,52 @@ public static class NotificationEndpoints
                     return Results.Unauthorized();
                 }
 
-                var device = await NotificationDevices.UpsertAsync(
+                var (device, error) = await NotificationDevices.TryBindAsync(
                     db,
                     request.DeviceToken,
                     request.Platform,
                     request.SettlementName,
-                    userId);
+                    userId.Value);
+                if (error is not null)
+                {
+                    return error;
+                }
+
                 await db.SaveChangesAsync();
-                return Results.Ok(device.ToDto());
+                return Results.Ok(device!.ToDto());
             })
             .RequireAuthorization()
             .WithName("RegisterDevice");
+
+        group.MapDelete("/devices", async (
+                string? deviceToken,
+                ClaimsPrincipal principal,
+                NotificationsDbContext db) =>
+            {
+                var userId = NotificationDevices.CurrentUserId(principal);
+                if (userId is null)
+                {
+                    return Results.Unauthorized();
+                }
+
+                var token = (deviceToken ?? "").Trim();
+                if (token.Length == 0)
+                {
+                    return Results.BadRequest(new { error = "deviceToken is required" });
+                }
+
+                var device = await db.DeviceSubscriptions
+                    .FirstOrDefaultAsync(d => d.DeviceToken == token && d.UserId == userId);
+                if (device is not null)
+                {
+                    db.DeviceSubscriptions.Remove(device);
+                    await db.SaveChangesAsync();
+                }
+
+                return Results.NoContent();
+            })
+            .RequireAuthorization()
+            .WithName("UnregisterDevice");
 
         group.MapPost("/favorites", async (
                 FavoriteStopRequest request,
@@ -50,12 +85,16 @@ public static class NotificationEndpoints
                     return Results.BadRequest(new { error = "deviceToken and stopId are required" });
                 }
 
-                var device = await NotificationDevices.UpsertAsync(
+                var (device, error) = await NotificationDevices.TryBindAsync(
                     db,
                     request.DeviceToken,
                     request.Platform ?? "web",
                     request.SettlementName,
-                    userId);
+                    userId.Value);
+                if (error is not null)
+                {
+                    return error;
+                }
 
                 var existing = await db.FavoriteStops
                     .FirstOrDefaultAsync(f => f.UserId == userId && f.StopId == request.StopId);
@@ -66,7 +105,7 @@ public static class NotificationEndpoints
                     {
                         Id = Guid.NewGuid(),
                         UserId = userId,
-                        DeviceSubscriptionId = device.Id,
+                        DeviceSubscriptionId = device!.Id,
                         StopId = request.StopId,
                         SettlementName = request.SettlementName,
                         CreatedAtUtc = DateTimeOffset.UtcNow
@@ -76,7 +115,7 @@ public static class NotificationEndpoints
                 else
                 {
                     existing.SettlementName = request.SettlementName;
-                    existing.DeviceSubscriptionId = device.Id;
+                    existing.DeviceSubscriptionId = device!.Id;
                 }
 
                 await db.SaveChangesAsync();

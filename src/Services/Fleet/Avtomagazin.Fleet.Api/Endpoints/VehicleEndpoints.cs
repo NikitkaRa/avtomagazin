@@ -14,16 +14,21 @@ public static class VehicleEndpoints
     {
         var group = app.MapGroup("/api").WithTags("Fleet");
 
-        group.MapGet("/vehicles", async (FleetDbContext db) =>
-                (await db.Vehicles.AsNoTracking().OrderBy(v => v.PlateNumber).ToListAsync())
-                    .Select(v => v.ToDto()))
+        group.MapGet("/vehicles", async (ClaimsPrincipal user, FleetDbContext db) =>
+            {
+                var contacts = user.CanSeeCrewContacts();
+                return (await db.Vehicles.AsNoTracking().OrderBy(v => v.PlateNumber).ToListAsync())
+                    .Select(v => v.ToDto(contacts));
+            })
             .RequireAuthorization()
             .WithName("ListVehicles");
 
-        group.MapGet("/vehicles/{id:guid}", async (Guid id, FleetDbContext db) =>
+        group.MapGet("/vehicles/{id:guid}", async (Guid id, ClaimsPrincipal user, FleetDbContext db) =>
             {
                 var vehicle = await db.Vehicles.AsNoTracking().FirstOrDefaultAsync(v => v.Id == id);
-                return vehicle is null ? Results.NotFound() : Results.Ok(vehicle.ToDto());
+                return vehicle is null
+                    ? Results.NotFound()
+                    : Results.Ok(vehicle.ToDto(user.CanSeeCrewContacts()));
             })
             .RequireAuthorization()
             .WithName("GetVehicle");

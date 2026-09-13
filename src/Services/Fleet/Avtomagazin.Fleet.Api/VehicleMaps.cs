@@ -5,7 +5,7 @@ namespace Avtomagazin.Fleet.Api;
 
 internal static class VehicleMaps
 {
-    public static VehicleDto ToDto(this Vehicle vehicle) => new(
+    public static VehicleDto ToDto(this Vehicle vehicle, bool includeContacts = true) => new(
         vehicle.Id,
         vehicle.PlateNumber,
         vehicle.OperatorName,
@@ -14,13 +14,13 @@ internal static class VehicleMaps
         vehicle.LastLongitude,
         vehicle.LastSeenAtUtc,
         vehicle.LastSource,
-        vehicle.DriverName,
-        vehicle.DriverPhone,
-        vehicle.SellerName,
-        vehicle.SellerPhone,
-        vehicle.OperatorPhone,
-        vehicle.DriverUserId,
-        vehicle.SellerUserId,
+        includeContacts ? vehicle.DriverName : null,
+        includeContacts ? vehicle.DriverPhone : null,
+        includeContacts ? vehicle.SellerName : null,
+        includeContacts ? vehicle.SellerPhone : null,
+        includeContacts ? vehicle.OperatorPhone : null,
+        includeContacts ? vehicle.DriverUserId : null,
+        includeContacts ? vehicle.SellerUserId : null,
         vehicle.PhotoDataUrl);
 
     public static VehiclePositionDto ToDto(this VehiclePosition position) => new(

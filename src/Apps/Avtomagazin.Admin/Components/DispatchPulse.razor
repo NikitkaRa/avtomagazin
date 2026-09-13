@@ -1,0 +1,21 @@
+<div class="pulse">
+    <div class="pulse-item @(Warn ? "pulse-warn" : null)">
+        <span class="pulse-n">@Attention</span>
+        <span class="pulse-l">внимание</span>
+    </div>
+    <div class="pulse-item">
+        <span class="pulse-n">@Live</span>
+        <span class="pulse-l">в эфире</span>
+    </div>
+    <div class="pulse-item">
+        <span class="pulse-n">@Routes</span>
+        <span class="pulse-l">рейсы</span>
+    </div>
+</div>
+
+@code {
+    [Parameter] public int Attention { get; set; }
+    [Parameter] public int Live { get; set; }
+    [Parameter] public int Routes { get; set; }
+    [Parameter] public bool Warn { get; set; }
+}

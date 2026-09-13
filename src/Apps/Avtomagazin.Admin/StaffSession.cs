@@ -109,6 +109,9 @@ public sealed class StaffSession : IAccessTokenAccessor
         Changed?.Invoke();
     }
 
+    public Task ApplyLoginAsync(LoginResponse login, bool? remember = null)
+        => SignInAsync(login.Role, login.Email, login.Name, login.VehicleId, login.AccessToken, remember ?? _remember);
+
     public void RefreshProfile(string? name)
     {
         Name = name;
@@ -117,9 +120,10 @@ public sealed class StaffSession : IAccessTokenAccessor
     }
 
     public void SignOut()
-    {
-        Clear(SignOutReason.Manual);
-    }
+        => _ = SignOutAsync();
+
+    public Task SignOutAsync()
+        => ClearAsync(SignOutReason.Manual);
 
     public void NotifyUnauthorized()
     {
@@ -128,10 +132,10 @@ public sealed class StaffSession : IAccessTokenAccessor
             return;
         }
 
-        Clear(SignOutReason.Expired);
+        _ = ClearAsync(SignOutReason.Expired);
     }
 
-    private void Clear(SignOutReason reason)
+    private async Task ClearAsync(SignOutReason reason)
     {
         Role = null;
         Email = null;
@@ -139,8 +143,10 @@ public sealed class StaffSession : IAccessTokenAccessor
         VehicleId = null;
         AccessToken = null;
         LastSignOutReason = reason;
+        _remember = true;
+        _persistDirty = true;
+        await PersistCoreAsync();
         _restored = true;
-        Persist();
         Changed?.Invoke();
     }
 
@@ -152,32 +158,37 @@ public sealed class StaffSession : IAccessTokenAccessor
 
     private async Task PersistCoreAsync()
     {
-        try
+        for (var attempt = 0; attempt < 3; attempt++)
         {
-            await _local.DeleteAsync(LocalKey);
-            await _session.DeleteAsync(SessionKey);
-
-            if (Role is null || AccessToken is null)
+            try
             {
+                await _local.DeleteAsync(LocalKey);
+                await _session.DeleteAsync(SessionKey);
+
+                if (Role is null || AccessToken is null)
+                {
+                    _persistDirty = false;
+                    return;
+                }
+
+                var snap = new StaffSnapshot(Role, Email, Name, VehicleId, AccessToken);
+                if (_remember)
+                {
+                    await _local.SetAsync(LocalKey, snap);
+                }
+                else
+                {
+                    await _session.SetAsync(SessionKey, snap);
+                }
+
                 _persistDirty = false;
                 return;
             }
-
-            var snap = new StaffSnapshot(Role, Email, Name, VehicleId, AccessToken);
-            if (_remember)
+            catch (InvalidOperationException)
             {
-                await _local.SetAsync(LocalKey, snap);
+                _persistDirty = true;
+                await Task.Delay(50 * (attempt + 1));
             }
-            else
-            {
-                await _session.SetAsync(SessionKey, snap);
-            }
-
-            _persistDirty = false;
-        }
-        catch (InvalidOperationException)
-        {
-            _persistDirty = true;
         }
     }
 

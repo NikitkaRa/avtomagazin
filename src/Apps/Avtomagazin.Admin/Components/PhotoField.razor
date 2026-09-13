@@ -1,0 +1,34 @@
+@using Microsoft.AspNetCore.Components.Forms
+
+<section class="block">
+    <header class="block-head">
+        <h2>Фото</h2>
+        <span class="block-meta">опционально · до 400 КБ</span>
+    </header>
+    <div class="photo-row">
+        @if (!string.IsNullOrEmpty(Url))
+        {
+            <img class="fleet-photo" src="@Url" alt="@Alt" />
+        }
+        else
+        {
+            <div class="fleet-photo fleet-photo-empty">Нет фото</div>
+        }
+        <div class="photo-actions">
+            <InputFile OnChange="OnPicked" accept="image/jpeg,image/png,image/webp" />
+            @if (!string.IsNullOrEmpty(Url))
+            {
+                <button type="button" class="btn btn-ghost" @onclick="Cleared">Убрать</button>
+            }
+        </div>
+    </div>
+</section>
+
+@code {
+    [Parameter] public string? Url { get; set; }
+    [Parameter] public string Alt { get; set; } = "";
+    [Parameter] public EventCallback<InputFileChangeEventArgs> Selected { get; set; }
+    [Parameter] public EventCallback Cleared { get; set; }
+
+    private Task OnPicked(InputFileChangeEventArgs e) => Selected.InvokeAsync(e);
+}

@@ -15,6 +15,7 @@ public sealed class SnapshotStore
     public SnapshotDto Current { get; private set; } = new(null, [], [], []);
     public string Source { get; private set; } = "empty";
     public bool Online { get; private set; }
+    public bool SessionExpired { get; private set; }
     public string? LastError { get; private set; }
     public TimeSpan LastRefreshDuration { get; private set; }
     public DateTimeOffset? LastOnlineAtUtc { get; private set; }
@@ -72,13 +73,21 @@ public sealed class SnapshotStore
             Current = Normalize(live);
             Source = "live";
             Online = true;
+            SessionExpired = false;
             LastError = null;
             LastOnlineAtUtc = DateTimeOffset.UtcNow;
             Preferences.Default.Set("snapshot", JsonSerializer.Serialize(live, Json));
         }
+        catch (SessionExpiredException)
+        {
+            Online = false;
+            SessionExpired = true;
+            LastError = "Сессия истекла — войдите снова";
+        }
         catch (Exception ex)
         {
             Online = false;
+            SessionExpired = false;
             LastError = ApiErrors.Friendly(ex);
             if (Current.Routes.Count == 0 && Current.Vehicles.Count == 0)
             {

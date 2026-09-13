@@ -25,6 +25,7 @@ public static class GpsFixApplier
             .ToDictionaryAsync(v => v.Id, cancellationToken);
 
         var applied = 0;
+        var pending = new List<VehiclePositionUpdated>();
         foreach (var fix in fixes)
         {
             if (!vehicles.TryGetValue(fix.VehicleId, out var vehicle))
@@ -56,19 +57,22 @@ public static class GpsFixApplier
             vehicle.LastSeenAtUtc = fix.RecordedAtUtc;
             vehicle.LastSource = GpsSources.Adapter;
             applied++;
-
-            await bus.Publish(new VehiclePositionUpdated(
+            pending.Add(new VehiclePositionUpdated(
                 vehicle.Id,
                 vehicle.PlateNumber,
                 fix.Latitude,
                 fix.Longitude,
                 fix.SpeedKmh,
-                fix.RecordedAtUtc), cancellationToken);
+                fix.RecordedAtUtc));
         }
 
         if (applied > 0)
         {
             await db.SaveChangesAsync(cancellationToken);
+            foreach (var evt in pending)
+            {
+                await bus.Publish(evt, cancellationToken);
+            }
         }
 
         return applied;

@@ -146,6 +146,14 @@ public class RoutingApiTests : IClassFixture<RoutingApiFactory>
     }
 
     [Fact]
+    public async Task Resident_cannot_list_driver_notes()
+    {
+        using var client = TestJwt.Client(_factory, Roles.Resident);
+        var response = await client.GetAsync("/api/driver-notes");
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
     public async Task Presence_report_requires_jwt()
     {
         var response = await _anonymous.PostAsJsonAsync($"/api/stops/{TestJwt.OzerichinoStop}/reports", new
@@ -154,5 +162,40 @@ public class RoutingApiTests : IClassFixture<RoutingApiFactory>
             deviceToken = "anon"
         });
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Presence_report_is_once_per_user_per_window()
+    {
+        var userId = Guid.NewGuid();
+        using var client = TestJwt.Client(_factory, Roles.Resident, userId: userId);
+        var first = await client.PostAsJsonAsync($"/api/stops/{TestJwt.OzerichinoStop}/reports", new
+        {
+            kind = "on-site"
+        });
+        Assert.Equal(HttpStatusCode.Created, first.StatusCode);
+
+        var second = await client.PostAsJsonAsync($"/api/stops/{TestJwt.OzerichinoStop}/reports", new
+        {
+            kind = "no-show"
+        });
+        Assert.Equal(HttpStatusCode.Conflict, second.StatusCode);
+    }
+
+    [Fact]
+    public async Task Add_stop_rejects_empty_name()
+    {
+        var routeId = Guid.Parse("cccccccc-cccc-cccc-cccc-cccccccccccc");
+        using var client = TestJwt.Client(_factory, Roles.Operator);
+        var response = await client.PostAsJsonAsync($"/api/routes/{routeId}/stops", new
+        {
+            sequence = 99,
+            settlementName = (string?)null,
+            regionCode = (string?)null,
+            latitude = 53.5,
+            longitude = 27.5,
+            plannedArrivalUtc = DateTimeOffset.UtcNow.AddHours(1)
+        });
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 }

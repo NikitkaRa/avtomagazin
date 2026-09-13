@@ -44,6 +44,11 @@ if (string.Equals(gpsProvider, "Mock", StringComparison.OrdinalIgnoreCase))
     builder.Services.AddHostedService<GpsPollingWorker>();
 }
 
+if (!builder.Environment.IsEnvironment("Testing"))
+{
+    builder.Services.AddHostedService<PositionRetentionWorker>();
+}
+
 var app = builder.Build();
 app.UseAvtomagazinDefaults();
 

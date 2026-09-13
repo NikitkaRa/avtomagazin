@@ -11,7 +11,9 @@ public sealed class Session : IAccessTokenAccessor
     public string? Email { get; set; }
     public Guid? UserId { get; set; }
     public Guid? VehicleId { get; set; }
+    public DateTimeOffset? AccessTokenExpiresAtUtc { get; set; }
     public string DeviceToken { get; }
+    public bool TokenStorageDegraded { get; private set; }
 
     public bool IsAuthenticated => !string.IsNullOrWhiteSpace(AccessToken);
     public bool IsResident => Role == Roles.Resident;
@@ -37,6 +39,7 @@ public sealed class Session : IAccessTokenAccessor
     }
 
     private const string TokenKey = "accessToken";
+    private const string ExpiresKey = "accessTokenExpires";
 
     public bool TryRestore()
     {
@@ -45,8 +48,13 @@ public sealed class Session : IAccessTokenAccessor
         Email = Preferences.Default.Get("email", "");
         UserId = Guid.TryParse(Preferences.Default.Get("userId", ""), out var id) ? id : null;
         VehicleId = Guid.TryParse(Preferences.Default.Get("vehicleId", ""), out var van) ? van : null;
-        AccessToken = Preferences.Default.Get(TokenKey, "");
-        return IsAuthenticated && !string.IsNullOrWhiteSpace(Role);
+        if (DateTimeOffset.TryParse(Preferences.Default.Get(ExpiresKey, ""), out var expires))
+        {
+            AccessTokenExpiresAtUtc = expires;
+        }
+
+        AccessToken = null;
+        return !string.IsNullOrWhiteSpace(Role);
     }
 
     public async Task HydrateTokenAsync()
@@ -63,9 +71,11 @@ public sealed class Session : IAccessTokenAccessor
         }
         catch (Exception)
         {
+            TokenStorageDegraded = true;
         }
 
         var legacy = Preferences.Default.Get(TokenKey, "");
+        Preferences.Default.Remove(TokenKey);
         if (string.IsNullOrWhiteSpace(legacy))
         {
             return;
@@ -75,10 +85,10 @@ public sealed class Session : IAccessTokenAccessor
         try
         {
             await SecureStorage.Default.SetAsync(TokenKey, legacy);
-            Preferences.Default.Remove(TokenKey);
         }
         catch (Exception)
         {
+            TokenStorageDegraded = true;
         }
     }
 
@@ -90,11 +100,14 @@ public sealed class Session : IAccessTokenAccessor
         Email = login.Email;
         UserId = login.UserId;
         VehicleId = login.VehicleId;
+        AccessTokenExpiresAtUtc = login.AccessTokenExpiresAtUtc;
+        TokenStorageDegraded = false;
         Preferences.Default.Set("role", login.Role ?? "");
         Preferences.Default.Set("name", login.Name ?? "");
         Preferences.Default.Set("email", login.Email ?? "");
         Preferences.Default.Set("userId", login.UserId.ToString());
         Preferences.Default.Set("vehicleId", login.VehicleId?.ToString() ?? "");
+        Preferences.Default.Set(ExpiresKey, login.AccessTokenExpiresAtUtc?.ToString("O") ?? "");
         Preferences.Default.Remove(TokenKey);
         try
         {
@@ -109,7 +122,7 @@ public sealed class Session : IAccessTokenAccessor
         }
         catch (Exception)
         {
-            Preferences.Default.Set(TokenKey, login.AccessToken ?? "");
+            TokenStorageDegraded = true;
         }
     }
 
@@ -121,7 +134,10 @@ public sealed class Session : IAccessTokenAccessor
         Email = null;
         UserId = null;
         VehicleId = null;
+        AccessTokenExpiresAtUtc = null;
+        TokenStorageDegraded = false;
         Preferences.Default.Remove(TokenKey);
+        Preferences.Default.Remove(ExpiresKey);
         Preferences.Default.Remove("role");
         Preferences.Default.Remove("name");
         Preferences.Default.Remove("email");

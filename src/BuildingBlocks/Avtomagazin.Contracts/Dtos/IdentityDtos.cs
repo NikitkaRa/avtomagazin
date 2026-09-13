@@ -16,7 +16,8 @@ public sealed record LoginResponse(
     string Email,
     string? Name,
     Guid? VehicleId,
-    string? Status);
+    string? Status,
+    DateTimeOffset? AccessTokenExpiresAtUtc = null);
 
 public sealed record StaffProfileDto(
     Guid Id,
@@ -70,3 +71,5 @@ public sealed record ChangePasswordRequest(string Current, string Next);
 public sealed record SetPasswordRequest(string Password);
 
 public sealed record UserStatusDto(Guid Id, string Status);
+
+public sealed record PagedResult<T>(List<T> Items, int Total, int Skip, int Take);

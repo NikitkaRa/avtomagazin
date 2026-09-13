@@ -5,14 +5,15 @@ namespace Avtomagazin.Identity.Api;
 
 internal static class IdentityMaps
 {
-    public static LoginResponse ToLogin(AppUser user, string? accessToken) => new(
+    public static LoginResponse ToLogin(AppUser user, string? accessToken, DateTimeOffset? accessTokenExpiresAtUtc = null) => new(
         accessToken,
         user.Role,
         user.Id,
         user.Email,
         user.DisplayName,
         user.VehicleId,
-        user.Status);
+        user.Status,
+        accessTokenExpiresAtUtc);
 
     public static StaffProfileDto ToProfile(AppUser user) => new(
         user.Id,

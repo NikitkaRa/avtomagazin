@@ -39,6 +39,14 @@ public class PrincipalAccessTests
     }
 
     [Fact]
+    public void Resident_cannot_see_crew_contacts()
+    {
+        Assert.False(Principal(Roles.Resident, null).CanSeeCrewContacts());
+        Assert.True(Principal(Roles.Driver, Guid.NewGuid()).CanSeeCrewContacts());
+        Assert.True(Principal(Roles.Operator, null).CanSeeCrewContacts());
+    }
+
+    [Fact]
     public void Resident_cannot_write_van()
     {
         var van = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");

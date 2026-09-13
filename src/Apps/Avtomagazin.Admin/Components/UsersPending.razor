@@ -1,0 +1,46 @@
+@if (Pending.Count == 0)
+{
+    return;
+}
+
+<section class="block">
+    <header class="block-head">
+        <h2>Заявки</h2>
+        <span class="block-meta">@Pending.Count</span>
+    </header>
+    @foreach (var u in Pending)
+    {
+        <section class="panel">
+            <strong>@u.DisplayName</strong>
+            <div class="muted">@u.Email · @u.RoleTitle</div>
+            @if (Roles.IsVanCrew(u.Role))
+            {
+                <label class="field" style="margin-top:0.55rem">
+                    <span>Автолавка @(u.Role == Roles.Driver ? "(обязательно)" : "(по желанию)")</span>
+                    <div class="select-wrap">
+                        <select value="@VanOf(u.Id)" @onchange="e => VanChanged.InvokeAsync((u.Id, e.Value?.ToString()))">
+                            <option value="">выберите</option>
+                            @foreach (var van in Vans)
+                            {
+                                <option value="@van.Id">@van.PlateNumber · @van.OperatorName</option>
+                            }
+                        </select>
+                    </div>
+                </label>
+            }
+            <div class="row" style="margin-top:0.6rem">
+                <button type="button" class="btn" @onclick="() => Approve.InvokeAsync(u)">Подтвердить</button>
+                <button type="button" class="btn btn-ghost" @onclick="() => Reject.InvokeAsync(u)">Отклонить</button>
+            </div>
+        </section>
+    }
+</section>
+
+@code {
+    [Parameter] public List<AccountDto> Pending { get; set; } = [];
+    [Parameter] public List<VehicleDto> Vans { get; set; } = [];
+    [Parameter] public Func<Guid, string> VanOf { get; set; } = _ => "";
+    [Parameter] public EventCallback<(Guid Id, string? Value)> VanChanged { get; set; }
+    [Parameter] public EventCallback<AccountDto> Approve { get; set; }
+    [Parameter] public EventCallback<AccountDto> Reject { get; set; }
+}

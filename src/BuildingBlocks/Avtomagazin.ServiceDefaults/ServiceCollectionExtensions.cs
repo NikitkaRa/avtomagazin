@@ -1,3 +1,4 @@
+using System.Net;
 using System.Text;
 using System.Threading.RateLimiting;
 using MassTransit;
@@ -60,7 +61,8 @@ public static class ServiceCollectionExtensions
                     ValidateIssuerSigningKey = true,
                     ValidIssuer = builder.Configuration["Jwt:Issuer"] ?? "avtomagazin",
                     ValidAudience = builder.Configuration["Jwt:Audience"] ?? "avtomagazin",
-                    IssuerSigningKey = signingKey
+                    IssuerSigningKey = signingKey,
+                    ClockSkew = TimeSpan.FromSeconds(30)
                 };
             });
 
@@ -105,12 +107,7 @@ public static class ServiceCollectionExtensions
                     }));
         });
 
-        builder.Services.Configure<ForwardedHeadersOptions>(options =>
-        {
-            options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
-            options.KnownIPNetworks.Clear();
-            options.KnownProxies.Clear();
-        });
+        builder.AddAvtomagazinForwardedHeaders();
 
         var useInMemory =
             builder.Environment.IsEnvironment("Testing")
@@ -153,6 +150,31 @@ public static class ServiceCollectionExtensions
             }
         });
 
+        return builder;
+    }
+
+    public static IHostApplicationBuilder AddAvtomagazinForwardedHeaders(this IHostApplicationBuilder builder)
+    {
+        builder.Services.Configure<ForwardedHeadersOptions>(options =>
+        {
+            options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+            var local = builder.Environment.IsDevelopment()
+                        || builder.Environment.IsEnvironment("Testing");
+            if (local)
+            {
+                options.KnownIPNetworks.Clear();
+                options.KnownProxies.Clear();
+                return;
+            }
+
+            foreach (var raw in builder.Configuration.GetSection("ForwardedHeaders:KnownProxies").GetChildren())
+            {
+                if (IPAddress.TryParse((raw.Value ?? "").Trim(), out var ip))
+                {
+                    options.KnownProxies.Add(ip);
+                }
+            }
+        });
         return builder;
     }
 

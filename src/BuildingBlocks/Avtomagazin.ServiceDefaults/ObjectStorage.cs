@@ -21,6 +21,7 @@ public sealed class ObjectStorageOptions
 public interface IObjectStorage
 {
     bool IsConfigured { get; }
+    bool IsOwnedUrl(string url);
     Task<string> UploadAsync(string folder, byte[] bytes, string contentType, CancellationToken ct = default);
     Task DeleteByUrlAsync(string? url, CancellationToken ct = default);
 }
@@ -43,6 +44,9 @@ internal sealed class S3ObjectStorage(
     private readonly IAmazonS3? _client = CreateClient(options.Value);
 
     public bool IsConfigured => _client is not null && !string.IsNullOrWhiteSpace(_opt.Endpoint);
+
+    public bool IsOwnedUrl(string url)
+        => TryOwnedUri(url, _opt) is not null;
 
     public async Task<string> UploadAsync(string folder, byte[] bytes, string contentType, CancellationToken ct = default)
     {
@@ -98,16 +102,46 @@ internal sealed class S3ObjectStorage(
 
     private bool TryKeyFromUrl(string url, out string key)
     {
-        key = "";
-        var marker = $"/{_opt.Bucket}/";
-        var idx = url.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
-        if (idx < 0)
+        key = TryOwnedUri(url, _opt)?.Key ?? "";
+        return key.Length > 0;
+    }
+
+    private static (string Host, string Key)? TryOwnedUri(string url, ObjectStorageOptions opt)
+    {
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri)
+            || uri.Scheme is not ("http" or "https"))
         {
-            return false;
+            return null;
         }
 
-        key = url[(idx + marker.Length)..].TrimStart('/');
-        return key.Length > 0;
+        var marker = $"/{opt.Bucket}/";
+        var idx = uri.AbsolutePath.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+        if (idx < 0)
+        {
+            return null;
+        }
+
+        var key = uri.AbsolutePath[(idx + marker.Length)..].TrimStart('/');
+        if (key.Length == 0)
+        {
+            return null;
+        }
+
+        foreach (var raw in new[] { opt.PublicBaseUrl, opt.Endpoint })
+        {
+            if (string.IsNullOrWhiteSpace(raw)
+                || !Uri.TryCreate(raw, UriKind.Absolute, out var owned))
+            {
+                continue;
+            }
+
+            if (string.Equals(uri.Host, owned.Host, StringComparison.OrdinalIgnoreCase))
+            {
+                return (uri.Host, Uri.UnescapeDataString(key));
+            }
+        }
+
+        return null;
     }
 
     private async Task EnsureBucketAsync(CancellationToken ct)
@@ -180,7 +214,17 @@ public static class MediaPhotos
         if (value.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
             || value.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
         {
-            return (value, null);
+            if (string.Equals(value, previousUrl, StringComparison.OrdinalIgnoreCase))
+            {
+                return (previousUrl, null);
+            }
+
+            if (storage.IsOwnedUrl(value))
+            {
+                return (value, null);
+            }
+
+            return (null, "Фото: загрузите файл, произвольные ссылки не принимаются");
         }
 
         if (!TryDecodeDataUrl(value, out var bytes, out var mime, out var error))

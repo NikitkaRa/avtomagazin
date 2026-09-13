@@ -1,4 +1,5 @@
 @inject StaffSession Session
+@inject AvtomagazinClient Api
 @inject NavigationManager Nav
 @implements IDisposable
 
@@ -49,6 +50,15 @@ else
     private async Task BootstrapAsync()
     {
         await Session.RestoreAsync();
+        if (Session.IsAuthenticated)
+        {
+            var refreshed = await Api.RefreshSessionAsync();
+            if (refreshed is { AccessToken.Length: > 0 })
+            {
+                await Session.ApplyLoginAsync(refreshed);
+            }
+        }
+
         _ready = Session.IsRestored;
 
         if (!Session.IsAuthenticated)

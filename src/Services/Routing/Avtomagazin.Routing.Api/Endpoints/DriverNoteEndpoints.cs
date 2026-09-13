@@ -23,7 +23,7 @@ public static class DriverNoteEndpoints
                     .ToListAsync();
                 return Results.Ok(items.Select(n => n.ToDto()));
             })
-            .RequireAuthorization()
+            .RequireAuthorization(policy => policy.RequireRole(Roles.Driver, Roles.Seller, Roles.Operator, Roles.Admin))
             .WithName("ListDriverNotes");
 
         group.MapPost("/driver-notes", async (

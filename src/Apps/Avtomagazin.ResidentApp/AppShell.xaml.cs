@@ -28,10 +28,7 @@ public partial class AppShell : Shell, IAppHost
     }
 
     public void SignOut()
-    {
-        _services.GetRequiredService<Session>().SignOut();
-        ShowLogin();
-    }
+        => _ = SessionGate.SignOutAsync(_services, this);
 
     public void ShowLogin()
     {

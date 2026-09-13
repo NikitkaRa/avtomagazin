@@ -85,7 +85,27 @@ public sealed class AvtomagazinClient(HttpClient http, IAccessTokenAccessor? tok
         CancellationToken ct = default)
         => AuthAsync("identity/api/auth/register", new { email, password, name, client, staffRole }, ct);
 
-    private async Task<LoginResponse?> AuthAsync(string path, object body, CancellationToken ct)
+    public Task<LoginResponse?> RefreshSessionAsync(CancellationToken ct = default)
+        => RefreshSessionCoreAsync(ct);
+
+    private async Task<LoginResponse?> RefreshSessionCoreAsync(CancellationToken ct)
+    {
+        using var response = await SendJsonAsync(HttpMethod.Post, "identity/api/auth/refresh", null, ct);
+        if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+        {
+            tokens?.NotifyUnauthorized();
+            return null;
+        }
+
+        if (!response.IsSuccessStatusCode)
+        {
+            return null;
+        }
+
+        return await response.Content.ReadFromJsonAsync<LoginResponse>(JsonOptions, ct);
+    }
+
+    private async Task<LoginResponse?> AuthAsync(string path, object? body, CancellationToken ct)
     {
         using var response = await SendJsonAsync(HttpMethod.Post, path, body, ct);
         if (response.StatusCode == System.Net.HttpStatusCode.Conflict)
@@ -107,12 +127,36 @@ public sealed class AvtomagazinClient(HttpClient http, IAccessTokenAccessor? tok
         return await response.Content.ReadFromJsonAsync<LoginResponse>(JsonOptions, ct);
     }
 
-    public Task<List<AccountDto>> GetUsersAsync(string? status = null, CancellationToken ct = default)
+    public async Task<PagedResult<AccountDto>> GetUsersAsync(
+        string? status = null,
+        string? kind = null,
+        string? role = null,
+        int skip = 0,
+        int take = 100,
+        CancellationToken ct = default)
     {
-        var path = string.IsNullOrWhiteSpace(status)
-            ? "identity/api/users"
-            : $"identity/api/users?status={Uri.EscapeDataString(status)}";
-        return GetListAsync<AccountDto>(path, ct);
+        var qs = new List<string>
+        {
+            $"skip={skip}",
+            $"take={take}"
+        };
+        if (!string.IsNullOrWhiteSpace(status))
+        {
+            qs.Add($"status={Uri.EscapeDataString(status)}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(kind))
+        {
+            qs.Add($"kind={Uri.EscapeDataString(kind)}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(role))
+        {
+            qs.Add($"role={Uri.EscapeDataString(role)}");
+        }
+
+        return await GetJsonAsync<PagedResult<AccountDto>>($"identity/api/users?{string.Join("&", qs)}", ct)
+               ?? new PagedResult<AccountDto>([], 0, skip, take);
     }
 
     public Task<List<StaffMemberDto>> GetStaffAsync(CancellationToken ct = default)
@@ -456,6 +500,18 @@ public sealed class AvtomagazinClient(HttpClient http, IAccessTokenAccessor? tok
     public async Task RegisterDeviceAsync(DeviceRegistrationRequest request, CancellationToken ct = default)
     {
         using var response = await SendJsonAsync(HttpMethod.Post, "notifications/api/devices/register", request, ct);
+        await EnsureSuccessAsync(response, ct);
+    }
+
+    public async Task UnregisterDeviceAsync(string deviceToken, CancellationToken ct = default)
+    {
+        var path = $"notifications/api/devices?deviceToken={Uri.EscapeDataString(deviceToken)}";
+        using var response = await SendAsync(new HttpRequestMessage(HttpMethod.Delete, path), ct);
+        if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+        {
+            return;
+        }
+
         await EnsureSuccessAsync(response, ct);
     }
 
